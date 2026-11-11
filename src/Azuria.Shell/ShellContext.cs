@@ -11,7 +11,6 @@ internal sealed class ShellContext : ApplicationContext
     public ShellContext()
     {
         Add(new BarWindow());
-        Add(new SidePanelWindow("left.html", right: false));
         Add(new SidePanelWindow("right.html", right: true));
 
         foreach (var w in _windows) w.Show();
