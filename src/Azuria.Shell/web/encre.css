@@ -82,3 +82,27 @@ html, body {
   user-select: none;
   cursor: default;
 }
+
+/* ---- Tiroirs (panneaux qui sortent d'un bord d'écran) ----
+   La forme est dessinée par drawer.js, à l'identique de la découpe native de la fenêtre :
+   voile translucide sur le flou DWM, et un trait discret sur les bords libres. */
+svg.drawer {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+.drawer-fill { fill: var(--surface); transition: fill 0.3s var(--ease-in); }
+.drawer-edge { fill: none; stroke: var(--border-strong); stroke-width: 1; }
+
+/* Zone utile du tiroir (hors congés concaves). */
+.content {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: var(--inset-l, 0); right: var(--inset-r, 0);
+}
+
+/* Icônes au trait (DA §10). */
+.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8;
+     stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+
+input { -webkit-user-select: text; user-select: text; }

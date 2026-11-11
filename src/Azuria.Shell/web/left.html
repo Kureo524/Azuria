@@ -3,66 +3,103 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Azuria — rail</title>
+  <title>Azuria — barre</title>
   <link rel="stylesheet" href="encre.css">
   <style>
-    /* Rail d'icônes gauche : fin, pleine hauteur, rien que des icônes. */
-    .glass {
-      position: fixed; inset: 0;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-top-color: var(--rim);
-      border-left-color: var(--rim);
-    }
-    .rail {
-      position: absolute; inset: 0;
+    /* Barre principale verticale (DA §9) : logo, bureaux, heure, état, alimentation. */
+    .bar {
       display: flex; flex-direction: column; align-items: center;
-      gap: 8px; padding: 10px 0;
+      gap: 6px; padding: 12px 0;
     }
     .spacer { flex: 1 1 auto; }
+    .sep { width: 24px; height: 1px; background: var(--border-strong); flex: 0 0 auto; margin: 4px 0; }
 
-    .ic {
+    .btn {
       width: 40px; height: 40px; flex: 0 0 auto;
-      border-radius: 11px;
-      display: grid; place-items: center;
-      color: var(--text-2); font-weight: 700; font-size: 15px; line-height: 1;
-      transition: background var(--dur-hover) var(--ease-in),
-                  color var(--dur-hover) var(--ease-in);
+      border-radius: 11px; display: grid; place-items: center;
+      color: var(--text-3);
+      transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
     }
-    .ic:hover { background: var(--hover); color: var(--text); }
-    /* Icône active : fond accent doux, teinte accent (DA §10). */
-    .ic.active { background: var(--accent-soft); color: var(--accent); }
-    /* Logo Azuria en tête, un peu plus marqué. */
-    .logo { color: var(--text); font-size: 17px; }
+    .btn:hover { background: var(--hover); color: var(--text); }
+    .logo { color: var(--text); font-weight: 700; font-size: 17px; line-height: 1; }
+    .power:hover { color: var(--danger); } /* l'action destructrice ne prend la couleur qu'au survol */
 
-    .sep { width: 24px; height: 1px; background: var(--border-strong); flex: 0 0 auto; }
+    /* Bureaux, empilés */
+    .desks { display: flex; flex-direction: column; gap: 4px; }
+    .desk {
+      width: 32px; height: 32px; border-radius: var(--r-pill);
+      display: grid; place-items: center;
+      color: var(--text-2); font-weight: 600; font-size: 12px; line-height: 1;
+      transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
+    }
+    .desk:hover { background: var(--hover); color: var(--text); }
+    .desk.active { background: var(--accent-soft); color: var(--accent); }
+
+    /* Heure verticale */
+    .clock {
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+      font-family: var(--font-num); font-weight: 600; font-size: 19px; line-height: 1;
+      color: var(--text); padding: 4px 0;
+    }
+    .clock .date { font-family: var(--font); font-weight: 400; font-size: 10px; color: var(--text-3); margin-top: 5px; }
+
+    .status { display: flex; flex-direction: column; gap: 2px; }
   </style>
 </head>
 <body>
-  <div class="glass"></div>
-  <div class="rail" id="rail"></div>
+  <script src="drawer.js"></script>
+  <div class="content bar">
+    <div class="btn logo" id="logo" title="Applications">A</div>
+    <div class="sep"></div>
+
+    <div class="desks" id="desks"></div>
+
+    <div class="spacer"></div>
+
+    <div class="clock">
+      <span id="hh">00</span><span id="mm">00</span>
+      <span class="date" id="date">—</span>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="status">
+      <div class="btn" title="Réseau">
+        <svg class="i" viewBox="0 0 24 24"><path d="M3 9.5a14 14 0 0 1 18 0"/><path d="M6 13a9.5 9.5 0 0 1 12 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="0.9" fill="currentColor" stroke="none"/></svg>
+      </div>
+      <div class="btn" title="Son">
+        <svg class="i" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path d="M18 7a7 7 0 0 1 0 10"/></svg>
+      </div>
+      <div class="btn" title="Batterie">
+        <svg class="i" viewBox="0 0 24 24"><rect x="3" y="7.5" width="16" height="9" rx="2"/><path d="M21 11v2"/><rect x="5" y="9.5" width="9" height="5" rx="0.8" fill="currentColor" stroke="none"/></svg>
+      </div>
+    </div>
+
+    <div class="btn power" title="Session">
+      <svg class="i" viewBox="0 0 24 24"><path d="M12 3.5v8"/><path d="M7 6.5a7.5 7.5 0 1 0 10 0"/></svg>
+    </div>
+  </div>
 
   <script>
-    // Icônes factices (lettres) — remplacées plus tard par de vraies icônes au trait via le C#.
-    const top = [
-      { t: 'A', cls: 'logo' },      // Azuria
-      { t: 'sep' },
-      { t: 'N', cls: 'active' },    // Navigateur (actif, exemple)
-      { t: 'F' },                   // Fichiers
-      { t: 'T' },                   // Terminal
-      { t: 'C' },                   // Code
-      { t: 'M' },                   // Musique
-    ];
-    const bottom = [
-      { t: 'sep' },
-      { t: 'P' },                   // Performances
-      { t: '⚙' },                   // Réglages
-    ];
-    const render = (items) => items.map(i =>
-      i.t === 'sep' ? '<div class="sep"></div>'
-                    : `<div class="ic ${i.cls || ''}">${i.t}</div>`).join('');
-    document.getElementById('rail').innerHTML =
-      render(top) + '<div class="spacer"></div>' + render(bottom);
+    // Bureaux factices (les vrais bureaux virtuels viendront du C#).
+    const desks = [1, 2, 3, 4];
+    document.getElementById('desks').innerHTML =
+      desks.map((n, i) => `<div class="desk${i === 0 ? ' active' : ''}">${n}</div>`).join('');
+
+    // Le logo ouvre / range le lanceur (géré par le C#).
+    document.getElementById('logo').addEventListener('click',
+      () => window.chrome?.webview?.postMessage('launcher'));
+
+    // Heure verticale + date courte.
+    const mois = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
+    function tick() {
+      const d = new Date();
+      document.getElementById('hh').textContent = String(d.getHours()).padStart(2, '0');
+      document.getElementById('mm').textContent = String(d.getMinutes()).padStart(2, '0');
+      document.getElementById('date').textContent = `${d.getDate()} ${mois[d.getMonth()]}`;
+    }
+    tick();
+    setInterval(tick, 1000);
   </script>
 </body>
 </html>

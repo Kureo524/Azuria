@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azuria — lanceur</title>
+  <link rel="stylesheet" href="encre.css">
+  <style>
+    /* Lanceur (DA §9) : recherche en tête, applications en grille. Contenu factice. */
+    .launch { display: flex; flex-direction: column; gap: 14px; padding: 18px 16px 14px; }
+
+    /* Champ de recherche des panneaux : 36 de haut (DA §10) */
+    .search {
+      display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
+      height: 36px; padding: 0 12px;
+      background: var(--input); border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text-3);
+      transition: border-color var(--dur-hover) var(--ease-in);
+    }
+    .search:focus-within { border-color: var(--accent); }
+    .search input {
+      flex: 1; min-width: 0; background: none; border: 0; outline: none;
+      color: var(--text); font: 12px var(--font);
+    }
+    .search input::placeholder { color: var(--text-3); }
+
+    .grid {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+      overflow-y: auto; align-content: start; flex: 1 1 auto;
+    }
+    .grid::-webkit-scrollbar { width: 6px; }
+    .grid::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 3px; }
+    .tile {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      padding: 10px 4px; border-radius: 12px;
+      transition: background var(--dur-hover) var(--ease-in);
+    }
+    .tile:hover, .tile.sel { background: var(--hover); }
+    .ic {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      display: grid; place-items: center; color: var(--text-2);
+      font-weight: 700; font-size: 16px; line-height: 1;
+    }
+    .tile .name { font-size: 11px; color: var(--text-2); text-align: center; line-height: 1.2; }
+    .empty { grid-column: 1 / -1; text-align: center; color: var(--text-3); font-size: 12px; padding: 24px 0; }
+  </style>
+</head>
+<body>
+  <script src="drawer.js"></script>
+  <div class="content launch">
+    <div class="search">
+      <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+      <input id="q" placeholder="Rechercher une application…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <script>
+    // Applications factices — la vraie liste viendra du C# (menu Démarrer, raccourcis).
+    const apps = ['Navigateur', 'Fichiers', 'Terminal', 'Réglages', 'Musique', 'Photos', 'Discord',
+                  'Code', 'Appareil photo', 'Calculatrice', 'Calendrier', 'Courrier', 'Horloge',
+                  'Lecteur vidéo', 'Météo', 'Notes', 'Store'];
+    const q = document.getElementById('q'), grid = document.getElementById('grid');
+    const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+    function render() {
+      const term = norm(q.value.trim());
+      const list = apps.filter(a => norm(a).includes(term));
+      grid.innerHTML = list.length
+        ? list.map((a, i) => `<div class="tile${i === 0 && term ? ' sel' : ''}"><div class="ic">${a[0]}</div><div class="name">${a}</div></div>`).join('')
+        : '<div class="empty">Aucun résultat</div>';
+    }
+    q.addEventListener('input', render);
+    render();
+
+    // Échap : on range le lanceur (géré par le C#).
+    addEventListener('keydown', e => {
+      if (e.key === 'Escape') window.chrome?.webview?.postMessage('close');
+    });
+    // À chaque ouverture : recherche vide, focus dans le champ.
+    window.chrome?.webview?.addEventListener('message', e => {
+      if (e.data === 'shown') { q.value = ''; render(); q.focus(); }
+    });
+  </script>
+</body>
+</html>

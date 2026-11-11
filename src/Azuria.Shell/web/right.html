@@ -7,25 +7,17 @@
   <link rel="stylesheet" href="encre.css">
   <style>
     /* Panneau droit : réglages rapides + notifications (DA §9). Contenu factice. */
-    .glass {
-      position: fixed; inset: 0;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-top-color: var(--rim);
-      border-left-color: var(--rim);
-    }
     .panel {
-      position: absolute; inset: 0;
       display: flex; flex-direction: column; gap: 14px;
       padding: 14px; overflow-y: auto;
     }
-    .panel::-webkit-scrollbar { width: 8px; }
-    .panel::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 4px; }
+    .panel::-webkit-scrollbar { width: 6px; }
+    .panel::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 3px; }
 
     .label { color: var(--text-2); font-weight: 700; font-size: 12px; }
     .head { display: flex; align-items: center; justify-content: space-between; }
 
-    /* Réglages rapides : grille de bascules compactes (icône + libellé court), adaptée à un panneau étroit */
+    /* Réglages rapides : bascules compactes (icône + libellé court) */
     .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .toggle {
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
@@ -34,12 +26,8 @@
       color: var(--text-2); font-size: 11px; text-align: center; line-height: 1;
       transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
     }
-    .toggle .ic {
-      width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
-      background: var(--input); color: var(--text-3); font-weight: 700; line-height: 1;
-    }
+    .toggle:hover { background: var(--hover); color: var(--text); }
     .toggle.on { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
-    .toggle.on .ic { background: var(--accent-tint); color: #fff; }
 
     /* Curseurs */
     .slider { display: flex; flex-direction: column; gap: 6px; }
@@ -53,33 +41,40 @@
 
     /* Notifications */
     .card {
-      display: flex; gap: 10px; padding: 10px 12px; border-radius: 12px;
+      display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 12px;
       background: var(--surface-raised); border: 1px solid var(--border);
     }
-    .card .ic {
-      width: 28px; height: 28px; border-radius: 8px; flex: 0 0 auto; display: grid; place-items: center;
-      background: var(--input); color: var(--text-3); font-weight: 700; line-height: 1;
-    }
-    .card .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .card .title { font-size: 12px; font-weight: 700; color: var(--text); }
     .card .text { font-size: 11px; color: var(--text-2); }
 
     .clear {
-      height: 24px; padding: 0 10px; border-radius: 8px; font-size: 11px;
+      height: 24px; padding: 0 10px; border-radius: 8px; font: 11px var(--font);
       background: rgba(230,234,242,0.04); border: 1px solid var(--border); color: var(--text-2);
     }
     .clear:hover { background: var(--hover); color: var(--text); }
   </style>
 </head>
 <body>
-  <div class="glass"></div>
-  <div class="panel">
+  <script src="drawer.js"></script>
+  <div class="content panel">
     <div class="label">Réglages rapides</div>
     <div class="quick">
-      <div class="toggle on"><div class="ic">W</div><span>Wi-Fi</span></div>
-      <div class="toggle"><div class="ic">B</div><span>Bluetooth</span></div>
-      <div class="toggle"><div class="ic">J</div><span>Mode jeu</span></div>
-      <div class="toggle"><div class="ic">S</div><span>Silence</span></div>
+      <div class="toggle on">
+        <svg class="i" viewBox="0 0 24 24"><path d="M3 9.5a14 14 0 0 1 18 0"/><path d="M6 13a9.5 9.5 0 0 1 12 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="0.9" fill="currentColor" stroke="none"/></svg>
+        <span>Wi-Fi</span>
+      </div>
+      <div class="toggle">
+        <svg class="i" viewBox="0 0 24 24"><path d="M7 7l10 10-5 4V3l5 4L7 17"/></svg>
+        <span>Bluetooth</span>
+      </div>
+      <div class="toggle">
+        <svg class="i" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="5"/><path d="M8 10v4M6 12h4"/><circle cx="16" cy="11" r="0.9" fill="currentColor" stroke="none"/><circle cx="17.5" cy="13.5" r="0.9" fill="currentColor" stroke="none"/></svg>
+        <span>Mode jeu</span>
+      </div>
+      <div class="toggle">
+        <svg class="i" viewBox="0 0 24 24"><path d="M19 14.5A8 8 0 0 1 9.5 5a8 8 0 1 0 9.5 9.5z"/></svg>
+        <span>Silence</span>
+      </div>
     </div>
 
     <div class="slider">
@@ -95,12 +90,9 @@
       <div class="label">Notifications</div>
       <button class="clear">Tout effacer</button>
     </div>
-    <div class="card"><div class="ic">M</div><div class="body">
-      <div class="title">Messagerie</div><div class="text">Nouveau message de l'équipe.</div></div></div>
-    <div class="card"><div class="ic">A</div><div class="body">
-      <div class="title">Azuria</div><div class="text">Panneaux latéraux en place (version d'essai).</div></div></div>
-    <div class="card"><div class="ic">S</div><div class="body">
-      <div class="title">Système</div><div class="text">Mise à jour disponible.</div></div></div>
+    <div class="card"><div class="title">Messagerie</div><div class="text">Nouveau message de l'équipe.</div></div>
+    <div class="card"><div class="title">Azuria</div><div class="text">Panneaux en version d'essai.</div></div>
+    <div class="card"><div class="title">Système</div><div class="text">Mise à jour disponible.</div></div>
   </div>
 </body>
 </html>

@@ -1,65 +1,58 @@
-using System.Linq;
+using Azuria.Shell.Native;
 
 namespace Azuria.Shell;
 
 /// <summary>
-/// Un panneau latéral (DA §9) : caché hors de l'écran, il glisse depuis le bord gauche ou droit
-/// quand le curseur touche ce bord, et se range quand il s'en éloigne. Largeur 380, pleine hauteur
-/// sous les marges, à 12 px des bords. Réutilise le glissé de <see cref="GlassWindow"/>.
+/// Un tiroir latéral pleine hauteur (DA §9), collé au bord gauche ou droit de l'espace des écrans :
+/// le rail gauche s'ancre au moniteur le plus à gauche, le panneau droit au plus à droite, ce qui
+/// couvre les deux écrans comme une seule zone. Il glisse depuis son bord quand le curseur y touche.
+/// Congés concaves en haut et en bas du côté libre (le tiroir semble sortir du bord).
 /// </summary>
 internal sealed class SidePanelWindow : GlassWindow
 {
-    private const int TriggerLogical = 3;    // épaisseur de la bande de déclenchement au bord
-    private const int OvershootLogical = 10; // dépassement hors écran côté bord → bord collé et droit
+    private const int TriggerLogical = 3; // épaisseur de la bande de déclenchement au bord
 
     private readonly bool _right;
-    private readonly int _widthLogical;
+    private readonly int _bodyWLogical;
+    private readonly int _radiusLogical;
 
-    public SidePanelWindow(string page, bool right, int widthLogical) : base(page)
+    public SidePanelWindow(string page, bool right, int widthLogical, int radiusLogical = 14) : base(page)
     {
         _right = right;
-        _widthLogical = widthLogical;
+        _bodyWLogical = widthLogical;
+        _radiusLogical = radiusLogical;
     }
 
-    // Le rail gauche s'ancre au moniteur le plus à gauche, le panneau droit au plus à droite :
-    // ainsi les panneaux bordent tout l'espace des écrans, pas un seul moniteur.
     protected override Screen AnchorScreen => _right
         ? Screen.AllScreens.OrderByDescending(s => s.Bounds.Right).First()
         : Screen.AllScreens.OrderBy(s => s.Bounds.Left).First();
 
-    protected override void OnDpiChanged(DpiChangedEventArgs e)
-    {
-        base.OnDpiChanged(e);
-        LayoutGeometry();
-    }
+    protected override DrawerEdge? Shape => _right ? DrawerEdge.Right : DrawerEdge.Left;
+    protected override int ShapeRadiusLogical => _radiusLogical;
 
     protected override void LayoutGeometry()
     {
         if (!IsHandleCreated) return;
-        var work = WorkArea; // écran cible (voir GlassWindow.TargetScreen)
-        int visibleW = Scale(_widthLogical);
-        int over = Scale(OvershootLogical);
-        int width = visibleW + over;   // la fenêtre inclut le dépassement (hors écran côté bord)
+        var work = WorkArea;
+        int r = Scale(_radiusLogical);
+        int w = Scale(_bodyWLogical) + r;  // + les congés côté libre
+        int h = work.Height;               // pleine hauteur
         int trig = Scale(TriggerLogical);
-        int top = work.Top;            // pleine hauteur
-        int height = work.Height;
 
         Rectangle shown, hidden, trigger, keep;
         if (!_right)
         {
-            // Collé au bord gauche : le dépassement passe à gauche de l'écran, bord gauche droit.
-            shown = new Rectangle(work.Left - over, top, width, height);
-            hidden = new Rectangle(work.Left - width, top, width, height);
-            trigger = new Rectangle(work.Left, work.Top, trig, work.Height);
-            keep = new Rectangle(work.Left, work.Top, visibleW, work.Height);
+            shown = new Rectangle(work.Left, work.Top, w, h);
+            hidden = new Rectangle(work.Left - w, work.Top, w, h);
+            trigger = new Rectangle(work.Left, work.Top, trig, h);
+            keep = new Rectangle(work.Left, work.Top, w, h);
         }
         else
         {
-            // Collé au bord droit : le dépassement passe à droite de l'écran, bord droit droit.
-            shown = new Rectangle(work.Right - visibleW, top, width, height);
-            hidden = new Rectangle(work.Right, top, width, height);
-            trigger = new Rectangle(work.Right - trig, work.Top, trig, work.Height);
-            keep = new Rectangle(work.Right - visibleW, work.Top, visibleW, work.Height);
+            shown = new Rectangle(work.Right - w, work.Top, w, h);
+            hidden = new Rectangle(work.Right, work.Top, w, h);
+            trigger = new Rectangle(work.Right - trig, work.Top, trig, h);
+            keep = new Rectangle(work.Right - w, work.Top, w, h);
         }
 
         ConfigureReveal(hidden, shown, trigger, keep);
