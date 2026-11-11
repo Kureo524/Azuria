@@ -7,9 +7,10 @@ namespace Azuria.Shell;
 /// </summary>
 internal sealed class SidePanelWindow : GlassWindow
 {
-    private const int MarginLogical = 12;  // DA §4 : marge avec les bords
-    private const int WidthLogical = 380;  // DA §9 : largeur des panneaux
-    private const int TriggerLogical = 3;  // épaisseur de la bande de déclenchement au bord
+    private const int MarginLogical = 12;   // DA §4 : marge haut/bas
+    private const int WidthLogical = 380;   // DA §9 : largeur des panneaux
+    private const int TriggerLogical = 3;   // épaisseur de la bande de déclenchement au bord
+    private const int OvershootLogical = 10; // dépassement hors écran côté bord → bord collé et droit
 
     private readonly bool _right;
 
@@ -26,7 +27,9 @@ internal sealed class SidePanelWindow : GlassWindow
         if (!IsHandleCreated) return;
         var work = Screen.FromHandle(Handle).WorkingArea; // pixels physiques
         int margin = Scale(MarginLogical);
-        int width = Scale(WidthLogical);
+        int visibleW = Scale(WidthLogical);
+        int over = Scale(OvershootLogical);
+        int width = visibleW + over;   // la fenêtre inclut le dépassement (hors écran côté bord)
         int trig = Scale(TriggerLogical);
         int top = work.Top + margin;
         int height = work.Height - 2 * margin;
@@ -34,17 +37,19 @@ internal sealed class SidePanelWindow : GlassWindow
         Rectangle shown, hidden, trigger, keep;
         if (!_right)
         {
-            shown = new Rectangle(work.Left + margin, top, width, height);
+            // Collé au bord gauche : le dépassement passe à gauche de l'écran, bord gauche droit.
+            shown = new Rectangle(work.Left - over, top, width, height);
             hidden = new Rectangle(work.Left - width - margin, top, width, height);
             trigger = new Rectangle(work.Left, work.Top, trig, work.Height);
-            keep = new Rectangle(work.Left, work.Top, shown.Right - work.Left, work.Height);
+            keep = new Rectangle(work.Left, work.Top, visibleW, work.Height);
         }
         else
         {
-            shown = new Rectangle(work.Right - margin - width, top, width, height);
+            // Collé au bord droit : le dépassement passe à droite de l'écran, bord droit droit.
+            shown = new Rectangle(work.Right - visibleW, top, width, height);
             hidden = new Rectangle(work.Right + margin, top, width, height);
             trigger = new Rectangle(work.Right - trig, work.Top, trig, work.Height);
-            keep = new Rectangle(shown.Left, work.Top, work.Right - shown.Left, work.Height);
+            keep = new Rectangle(work.Right - visibleW, work.Top, visibleW, work.Height);
         }
 
         ConfigureReveal(hidden, shown, trigger, keep);
