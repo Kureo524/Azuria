@@ -186,8 +186,16 @@ internal class GlassWindow : Form
         var cursor = new Point(p.X, p.Y);
         Rectangle hot = _shownState ? _keepZone : _triggerZone;
         bool want = hot.Contains(cursor);
-        if (want != _shownState) Slide(want);
+        if (want != _shownState)
+        {
+            if (want) PrepareReveal(cursor); // laisse recalculer la géométrie (ex. écran du curseur)
+            Slide(want);
+        }
     }
+
+    /// <summary>Appelé juste avant de révéler, avec la position du curseur. Permet de recalculer la
+    /// géométrie — par exemple centrer la barre sur l'écran dont le curseur touche le haut.</summary>
+    protected virtual void PrepareReveal(Point cursor) { }
 
     /// <summary>
     /// Glisse la fenêtre entre caché et révélé, cadencé par DWM (synchronisé au rafraîchissement) :
