@@ -31,6 +31,9 @@ simplicité de Windows (jouer à League of Legends, lancer un `.exe`, ne pas viv
 
 - **La disposition du shell** de la section 9 de `docs/da.md` (barre en haut, contenu des panneaux) : proposition
   de Claude, pas encore validée par le propriétaire.
+- **La barre en « dynamic island »** (demande du propriétaire) : repliée au repos (juste l'heure), elle s'agrandit
+  au survol. C'est un **écart assumé avec la DA §9** (barre pleine largeur) **et §11** (« on n'anime pas la taille
+  d'un panneau ») ; à acter dans la DA si on le garde.
 - **La licence** du dépôt, et le README.
 - **Le gestionnaire de fenêtres** (pavage) : en écrire un, ou s'appuyer sur un existant dont la licence le permet.
 - **Les règles anti-triche de `CLAUDE.md`** (aucun pilote, aucune injection, ne pas toucher à Secure Boot ni au
