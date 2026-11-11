@@ -32,13 +32,7 @@ internal class GlassWindow : Form
     private Rectangle _keepZone;    // curseur ici (révélé) → on reste ; sinon on cache
     private bool _shownState;
     private bool _geometryReady;
-
-    // Animation de position
-    private readonly System.Windows.Forms.Timer _anim = new() { Interval = 15 };
-    private readonly Stopwatch _clock = new();
-    private Rectangle _animFrom, _animTo;
-    private double _animDurationMs;
-    private bool _animDecelerate;
+    private bool _animating;
 
     // Survol (sondage du curseur) et stabilisation du DPI après affichage
     private readonly System.Windows.Forms.Timer _hover = new() { Interval = 30 };
@@ -48,6 +42,8 @@ internal class GlassWindow : Form
     [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint hwnd);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int cx, int cy, uint flags);
+    private const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
 
     protected GlassWindow(string page)
     {
@@ -64,7 +60,6 @@ internal class GlassWindow : Form
         _web.DefaultBackgroundColor = Color.Transparent;
         Controls.Add(_web);
 
-        _anim.Tick += OnAnimTick;
         _hover.Tick += OnHoverTick;
         _settle.Tick += (_, _) =>
         {
@@ -110,7 +105,7 @@ internal class GlassWindow : Form
         _triggerZone = triggerZone;
         _keepZone = keepZone;
         _geometryReady = true;
-        if (!_anim.Enabled) Bounds = _shownState ? shown : hidden;
+        if (!_animating) Bounds = _shownState ? shown : hidden;
     }
 
     // ----- cycle de vie / verre -----
@@ -158,41 +153,43 @@ internal class GlassWindow : Form
 
     private void OnHoverTick(object? sender, EventArgs e)
     {
-        if (!_geometryReady) return;
+        if (!_geometryReady || _animating) return;
         GetCursorPos(out POINT p);
         var cursor = new Point(p.X, p.Y);
         Rectangle hot = _shownState ? _keepZone : _triggerZone;
         bool want = hot.Contains(cursor);
-        if (want != _shownState) AnimateTo(want);
+        if (want != _shownState) Slide(want);
     }
 
-    private void AnimateTo(bool shown)
+    /// <summary>
+    /// Glisse la fenêtre entre caché et révélé, cadencé par DWM (synchronisé au rafraîchissement) :
+    /// c'est ce qui rend le mouvement fluide, là où un timer WinForms saccadait. Seule la position
+    /// change (taille constante), donc rien ne se remet en page pendant le glissé.
+    /// </summary>
+    private void Slide(bool shown)
     {
         _shownState = shown;
-        _animFrom = Bounds;
-        _animTo = shown ? _shown : _hidden;
-        _animDurationMs = shown ? 200 : 140;  // DA §11 : ouverture ~0,2 s, fermeture 0,14 s
-        _animDecelerate = shown;               // entrée en décélération, sortie en accélération
-        _clock.Restart();
-        _anim.Start();
-    }
-
-    private void OnAnimTick(object? sender, EventArgs e)
-    {
-        double p = Math.Clamp(_clock.Elapsed.TotalMilliseconds / _animDurationMs, 0, 1);
-        double eased = _animDecelerate ? Bezier(0.2, 0, 0, 1, p) : Bezier(0.3, 0, 1, 1, p);
-
-        Bounds = new Rectangle(
-            Lerp(_animFrom.X, _animTo.X, eased),
-            Lerp(_animFrom.Y, _animTo.Y, eased),
-            _animTo.Width, _animTo.Height); // taille constante : seule la position glisse
-
-        if (p >= 1)
+        _animating = true;
+        try
         {
-            _anim.Stop();
-            _clock.Stop();
-            Bounds = _animTo;
+            var from = Bounds;
+            var to = shown ? _shown : _hidden;
+            double dur = shown ? 200 : 140;   // DA §11 : ouverture ~0,2 s, fermeture 0,14 s
+            var sw = Stopwatch.StartNew();
+            while (true)
+            {
+                double t = sw.Elapsed.TotalMilliseconds;
+                if (t >= dur) break;
+                double p = t / dur;
+                double e = shown ? Bezier(0.2, 0, 0, 1, p)   // entrée : décélération
+                                 : Bezier(0.3, 0, 1, 1, p);  // sortie : accélération
+                int y = Lerp(from.Y, to.Y, e);
+                SetWindowPos(Handle, 0, to.X, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                Dwm.Flush();
+            }
+            SetWindowPos(Handle, 0, to.X, to.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
         }
+        finally { _animating = false; }
     }
 
     private static int Lerp(int a, int b, double t) => (int)Math.Round(a + (b - a) * t);
