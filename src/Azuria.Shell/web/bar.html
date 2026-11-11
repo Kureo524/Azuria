@@ -40,6 +40,7 @@
       height: 28px; min-width: 28px; padding: 0 8px;
       border-radius: var(--r-icon);
       color: var(--text-3);
+      line-height: 1; /* colle le glyphe au centre de sa boîte (métriques Gothic A1) */
       transition: background var(--dur-hover) var(--ease-in),
                   color var(--dur-hover) var(--ease-in);
     }
@@ -51,6 +52,7 @@
       display: grid; place-items: center;
       border-radius: var(--r-pill);
       color: var(--text-2); font-weight: 600;
+      line-height: 1; /* centre le chiffre dans sa boîte (métriques Gothic A1) */
       transition: background var(--dur-hover) var(--ease-in),
                   color var(--dur-hover) var(--ease-in);
     }
@@ -71,7 +73,7 @@
       font-family: var(--font-num); font-weight: 600; font-size: 17px;
       letter-spacing: 0.5px; line-height: 1;
     }
-    .clock .date { color: var(--text-3); font-size: 11px; }
+    .clock .date { color: var(--text-3); font-size: 11px; line-height: 1; }
 
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
   </style>
