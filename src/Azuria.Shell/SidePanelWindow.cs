@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace Azuria.Shell;
 
 /// <summary>
@@ -18,6 +20,12 @@ internal sealed class SidePanelWindow : GlassWindow
         _right = right;
         _widthLogical = widthLogical;
     }
+
+    // Le rail gauche s'ancre au moniteur le plus à gauche, le panneau droit au plus à droite :
+    // ainsi les panneaux bordent tout l'espace des écrans, pas un seul moniteur.
+    protected override Screen AnchorScreen => _right
+        ? Screen.AllScreens.OrderByDescending(s => s.Bounds.Right).First()
+        : Screen.AllScreens.OrderBy(s => s.Bounds.Left).First();
 
     protected override void OnDpiChanged(DpiChangedEventArgs e)
     {

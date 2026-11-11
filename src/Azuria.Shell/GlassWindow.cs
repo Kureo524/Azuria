@@ -88,23 +88,23 @@ internal class GlassWindow : Form
     }
 
     /// <summary>
-    /// Écran cible du shell : l'écran secondaire (celui qu'on utilise), sinon le principal.
-    /// (Heuristique « deuxième écran » ; un vrai réglage de moniteur viendra plus tard.)
+    /// Écran sur lequel s'ancre cette fenêtre. Par défaut l'écran principal ; les panneaux latéraux
+    /// s'ancrent sur le moniteur le plus à gauche / à droite, pour couvrir tout l'espace des écrans
+    /// (les deux moniteurs forment une seule zone, on ne se cantonne pas à l'un d'eux).
     /// </summary>
-    protected static Screen TargetScreen =>
-        Array.Find(Screen.AllScreens, s => !s.Primary) ?? Screen.PrimaryScreen!;
+    protected virtual Screen AnchorScreen => Screen.PrimaryScreen ?? Screen.AllScreens[0];
 
-    protected Rectangle WorkArea => TargetScreen.WorkingArea;
+    protected Rectangle WorkArea => AnchorScreen.WorkingArea;
 
     /// <summary>
-    /// DPI de l'écran cible, lu sur le moniteur (pas sur la fenêtre) : fiable même quand la fenêtre
-    /// est masquée ou pas encore sur cet écran. Nécessite PerMonitorV2 (forcé dans Program).
+    /// DPI de l'écran d'ancrage, lu sur le moniteur (pas sur la fenêtre) : fiable même quand la
+    /// fenêtre est masquée ou pas encore dessus. Nécessite PerMonitorV2 (forcé dans Program).
     /// </summary>
     protected uint TargetDpi
     {
         get
         {
-            var b = TargetScreen.Bounds;
+            var b = AnchorScreen.Bounds;
             var pt = new POINT { X = b.Left + b.Width / 2, Y = b.Top + b.Height / 2 };
             nint mon = MonitorFromPoint(pt, 2 /* MONITOR_DEFAULTTONEAREST */);
             return GetDpiForMonitor(mon, 0 /* MDT_EFFECTIVE_DPI */, out uint d, out _) == 0 && d > 0 ? d : 96;
