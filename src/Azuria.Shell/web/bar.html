@@ -6,9 +6,8 @@
   <title>Azuria — barre</title>
   <link rel="stylesheet" href="encre.css">
   <style>
-    /* La page fait la taille « étendue » de la barre (fixée par le C#). Au repos, la fenêtre
-       est rétrécie autour du centre : on ne voit que l'horloge (dynamic island). À l'arrivée du
-       curseur, la fenêtre s'agrandit et les groupes gauche/droite apparaissent en fondu. */
+    /* Barre pleine largeur (DA §9). La fenêtre glisse depuis le haut ; ici tout est fixe, rien ne
+       bouge à l'intérieur : groupes aux extrémités, horloge au centre. */
 
     body { position: relative; }
 
@@ -29,12 +28,8 @@
       position: absolute;
       top: 0; bottom: 0;
       display: flex; align-items: center; gap: 6px;
-      padding: 0 10px;
-      /* révélés seulement quand la barre est étendue */
-      opacity: 0;
-      transition: opacity 0.16s var(--ease-in);
+      padding: 0 12px;
     }
-    html.expanded .group { opacity: 1; }
     .group.left { left: 0; }
     .group.right { right: 0; }
 
@@ -62,7 +57,7 @@
     .desk:hover { background: var(--hover); color: var(--text); }
     .desk.active { background: var(--accent-soft); color: var(--accent); }
 
-    /* Horloge, toujours au centre (c'est elle qu'on voit au repos). */
+    /* Horloge, centrée (ne bouge jamais). */
     .clock {
       position: absolute;
       left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -77,8 +72,6 @@
       letter-spacing: 0.5px; line-height: 1;
     }
     .clock .date { color: var(--text-3); font-size: 11px; }
-    /* Au repos, la date disparaît (retirée du flux) : l'heure reste bien centrée dans la pastille. */
-    html:not(.expanded) .clock .date { display: none; }
 
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
   </style>
@@ -94,7 +87,7 @@
       <div class="desk">3</div>
     </div>
 
-    <!-- Centre : horloge (visible au repos) -->
+    <!-- Centre : horloge -->
     <div class="clock" id="clock">
       <span class="time" id="time">00:00</span>
       <span class="date" id="date">—</span>
@@ -111,7 +104,7 @@
   </div>
 
   <script>
-    // Horloge locale.
+    // Horloge locale. Le reste (vrais bureaux, état système) viendra du C# plus tard.
     const jours = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
     const mois = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
     function tick() {
@@ -123,10 +116,6 @@
     }
     tick();
     setInterval(tick, 1000);
-
-    // Le dynamic island est piloté par le C# (il sonde le curseur et redimensionne la fenêtre
-    // native) : il ajoute/retire la classe « expanded » sur <html>, qui déclenche le fondu des
-    // groupes gauche/droite. Rien à faire ici côté survol.
   </script>
 </body>
 </html>

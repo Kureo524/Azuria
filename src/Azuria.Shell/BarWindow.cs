@@ -1,19 +1,15 @@
 namespace Azuria.Shell;
 
 /// <summary>
-/// La barre d'Azuria, en « dynamic island » : au repos, une petite pastille centrée en haut qui
-/// ne montre que l'heure ; au survol, elle s'agrandit pour révéler les bureaux (gauche) et la zone
-/// d'état (droite). (Écart assumé avec la DA §9/§11, acté — voir docs/contexte.md §3.)
+/// La barre d'Azuria (DA §9), façon Caelestia : cachée au-dessus du bord haut, elle descend quand le
+/// curseur touche le haut de l'écran, et remonte quand il s'en éloigne. Pleine largeur, hauteur 40,
+/// rayon 14, à 12 px des bords. Elle ne fait que glisser : rien ne bouge à l'intérieur.
 /// </summary>
 internal sealed class BarWindow : GlassWindow
 {
-    private const int MarginTopLogical = 12; // DA §4 : marge avec le bord de l'écran
-
-    // États (tailles logiques). Replié : juste l'heure. Étendu : barre complète centrée.
-    private const int CollapsedWLogical = 136;
-    private const int CollapsedHLogical = 30;
-    private const int ExpandedWLogical = 560;
-    private const int ExpandedHLogical = 40;
+    private const int MarginLogical = 12;   // DA §4 : marge avec les bords de l'écran
+    private const int HeightLogical = 40;   // DA §9 : hauteur de la barre
+    private const int TriggerLogical = 3;   // épaisseur de la bande de déclenchement en haut
 
     public BarWindow() : base("bar.html") { }
 
@@ -27,17 +23,22 @@ internal sealed class BarWindow : GlassWindow
     {
         if (!IsHandleCreated) return;
         var work = Screen.FromHandle(Handle).WorkingArea; // pixels physiques
-        int centerX = work.Left + work.Width / 2;
-        int top = work.Top + Scale(MarginTopLogical);
+        int margin = Scale(MarginLogical);
+        int height = Scale(HeightLogical);
+        int width = work.Width - 2 * margin;
+        int x = work.Left + margin;
 
-        Rectangle Centered(int wLogical, int hLogical)
-        {
-            int w = Scale(wLogical), h = Scale(hLogical);
-            return new Rectangle(centerX - w / 2, top, w, h);
-        }
+        var shown = new Rectangle(x, work.Top + margin, width, height);
+        // Cachée entièrement au-dessus du bord haut de l'écran.
+        var hidden = new Rectangle(x, work.Top - height - margin, width, height);
 
-        ConfigureGeometry(
-            collapsed: Centered(CollapsedWLogical, CollapsedHLogical),
-            expanded: Centered(ExpandedWLogical, ExpandedHLogical));
+        // Déclenchement : une fine bande sur tout le bord haut de l'écran.
+        var trigger = new Rectangle(work.Left, work.Top, work.Width, Scale(TriggerLogical));
+        // Maintien : du bord haut jusqu'au bas de la barre révélée (pour ne pas osciller quand le
+        // curseur est au-dessus de la barre, dans la marge).
+        int keepBottom = shown.Bottom;
+        var keep = new Rectangle(work.Left, work.Top, work.Width, keepBottom - work.Top);
+
+        ConfigureReveal(hidden, shown, trigger, keep);
     }
 }

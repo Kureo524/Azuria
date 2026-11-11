@@ -174,10 +174,10 @@ elles et avec la barre et les bords. La fenêtre active a une bordure de 1 en `-
 
 Tout est en verre plein, à 12 des bords de l'écran et à 12 les uns des autres.
 
-**Barre** — en haut, centrée, rayon 14, en **« dynamic island »** : au repos, une pastille compacte qui ne
-montre que l'heure ; au survol, elle s'agrandit (hauteur 40) pour révéler les bureaux à gauche et la zone d'état
-à droite, puis se replie quand le curseur s'éloigne. L'expansion suit les durées et courbes de la section 11.
-Les fenêtres commencent sous la barre.
+**Barre** — en haut, sur toute la largeur, hauteur 40, rayon 14, à 12 des bords. **Masquée par défaut**, façon
+Caelestia : elle **descend** quand le curseur touche le bord haut de l'écran, et **remonte** quand il s'en éloigne.
+Elle ne fait que glisser verticalement (durées et courbes de la section 11) : sa forme et son contenu ne bougent
+pas. Les fenêtres commencent sous elle quand elle est révélée.
 
 - À gauche : bouton Azuria (ouvre le panneau gauche), puis les bureaux (hauteur 28, rayon 9, SemiBold ; actif :
   fond `--accent-soft`, texte `--accent`).

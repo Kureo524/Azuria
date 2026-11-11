@@ -11,10 +11,10 @@ namespace Azuria.Shell;
 /// Fenêtre de verre d'Azuria : hôte natif sans cadre, toujours au-dessus, hors barre des tâches,
 /// avec l'Acrylic de DWM, qui affiche une page de l'UI (HTML/CSS) dans un WebView2 transparent.
 ///
-/// Coins arrondis par le compositeur (DWMWA_WINDOW_CORNER_PREFERENCE) : robuste sur tout GPU et
-/// sans clignotement au redimensionnement. Pour l'effet « dynamic island », la fenêtre s'anime
-/// entre un état replié et un état étendu ; le survol est détecté en sondant la position du
-/// curseur (zone stable), ce qui évite toute boucle repli/expansion au bord de la fenêtre.
+/// Coins arrondis par le compositeur (DWMWA_WINDOW_CORNER_PREFERENCE). La fenêtre se révèle en
+/// GLISSANT depuis un bord (comme Caelestia) : on anime seulement sa POSITION, jamais sa taille,
+/// donc le contenu ne bouge pas et ne « stutter » pas. Le curseur est sondé côté C# : une zone
+/// déclenche la révélation, une autre (plus large) la maintient, ce qui évite toute oscillation.
 /// </summary>
 internal class GlassWindow : Form
 {
@@ -25,14 +25,15 @@ internal class GlassWindow : Form
     private readonly WebView2 _web = new();
     private bool _blurAvailable = true;
 
-    // Géométrie (pixels physiques) : les deux états, fixés par la classe dérivée.
-    private Rectangle _collapsed;
-    private Rectangle _expanded;
-    private Size _contentSize;   // taille FIXE du WebView2 = état étendu (évite tout re-layout)
-    private bool _expandedState;
+    // Géométrie (pixels physiques), fixée par la classe dérivée.
+    private Rectangle _hidden;     // position cachée (hors écran)
+    private Rectangle _shown;      // position révélée
+    private Rectangle _triggerZone; // curseur ici (caché) → on révèle
+    private Rectangle _keepZone;    // curseur ici (révélé) → on reste ; sinon on cache
+    private bool _shownState;
     private bool _geometryReady;
 
-    // Animation de taille
+    // Animation de position
     private readonly System.Windows.Forms.Timer _anim = new() { Interval = 15 };
     private readonly Stopwatch _clock = new();
     private Rectangle _animFrom, _animTo;
@@ -40,7 +41,7 @@ internal class GlassWindow : Form
     private bool _animDecelerate;
 
     // Survol (sondage du curseur) et stabilisation du DPI après affichage
-    private readonly System.Windows.Forms.Timer _hover = new() { Interval = 60 };
+    private readonly System.Windows.Forms.Timer _hover = new() { Interval = 30 };
     private readonly System.Windows.Forms.Timer _settle = new() { Interval = 50 };
     private int _settleTicks;
 
@@ -59,8 +60,7 @@ internal class GlassWindow : Form
         AutoScaleMode = AutoScaleMode.None; // on gère les tailles en pixels physiques
         BackColor = Color.Black;            // noir = verre, dans le cadre étendu par DWM
 
-        // Le WebView2 a une taille FIXE (état étendu) et reste centré : quand la fenêtre rétrécit,
-        // elle le rogne autour du centre. Le contenu n'est jamais re-mis en page → pas de « stutter ».
+        _web.Dock = DockStyle.Fill;         // taille de fenêtre constante → pas de re-layout
         _web.DefaultBackgroundColor = Color.Transparent;
         Controls.Add(_web);
 
@@ -99,25 +99,18 @@ internal class GlassWindow : Form
     /// <summary>Appelé quand la fenêtre doit (re)calculer sa géométrie (affichage, DPI, écran).</summary>
     protected virtual void LayoutGeometry() { }
 
-    /// <summary>Fixe les deux états de la fenêtre. La fenêtre prend l'état courant (replié au départ).</summary>
-    protected void ConfigureGeometry(Rectangle collapsed, Rectangle expanded)
+    /// <summary>
+    /// Configure la révélation par glissement. <paramref name="triggerZone"/> : où amener le curseur
+    /// pour révéler ; <paramref name="keepZone"/> : où il doit rester pour que ça le reste.
+    /// </summary>
+    protected void ConfigureReveal(Rectangle hidden, Rectangle shown, Rectangle triggerZone, Rectangle keepZone)
     {
-        _collapsed = collapsed;
-        _expanded = expanded;
-        _contentSize = expanded.Size;
+        _hidden = hidden;
+        _shown = shown;
+        _triggerZone = triggerZone;
+        _keepZone = keepZone;
         _geometryReady = true;
-        _web.Size = _contentSize; // taille fixe (état étendu)
-        if (!_anim.Enabled) ApplyBounds(_expandedState ? expanded : collapsed);
-    }
-
-    private void ApplyBounds(Rectangle r)
-    {
-        Bounds = r; // coins arrondis par DWM, pas de région
-        // Garde le WebView2 (taille fixe) centré ; quand la fenêtre est plus petite, il déborde et
-        // se fait rogner. On ne change que sa position (jamais sa taille) → aucun re-layout.
-        _web.Location = new Point(
-            (ClientSize.Width - _web.Width) / 2,
-            (ClientSize.Height - _web.Height) / 2);
+        if (!_anim.Enabled) Bounds = _shownState ? shown : hidden;
     }
 
     // ----- cycle de vie / verre -----
@@ -158,38 +151,28 @@ internal class GlassWindow : Form
         ApplyBlurClass();
         core.Navigate($"https://azuria.local/{_page}");
 
-        _hover.Start(); // le survol pilote l'expansion (voir OnHoverTick)
+        _hover.Start(); // le survol pilote la révélation (voir OnHoverTick)
     }
 
-    // ----- dynamic island : survol sondé → animation -----
+    // ----- révélation par glissement : survol sondé -----
 
-    /// <summary>
-    /// Sonde la position du curseur. On s'étend si le curseur est sur la pastille repliée, et on ne
-    /// se replie que lorsqu'il quitte toute la barre étendue : la zone chaude dépend de l'état, donc
-    /// pas de boucle repli/expansion au bord.
-    /// </summary>
     private void OnHoverTick(object? sender, EventArgs e)
     {
         if (!_geometryReady) return;
         GetCursorPos(out POINT p);
         var cursor = new Point(p.X, p.Y);
-        Rectangle hot = _expandedState ? _expanded : _collapsed;
+        Rectangle hot = _shownState ? _keepZone : _triggerZone;
         bool want = hot.Contains(cursor);
-        if (want != _expandedState) AnimateTo(want);
+        if (want != _shownState) AnimateTo(want);
     }
 
-    private void AnimateTo(bool expanded)
+    private void AnimateTo(bool shown)
     {
-        _expandedState = expanded;
-
-        // Prévient l'UI (fondu des groupes gauche/droite) ; le redimensionnement, lui, est natif.
-        _ = _web.CoreWebView2?.ExecuteScriptAsync(
-            $"document.documentElement.classList.toggle('expanded', {(expanded ? "true" : "false")})");
-
+        _shownState = shown;
         _animFrom = Bounds;
-        _animTo = expanded ? _expanded : _collapsed;
-        _animDurationMs = expanded ? 180 : 140;  // DA §11 : ouverture ~0,2 s, fermeture 0,14 s
-        _animDecelerate = expanded;
+        _animTo = shown ? _shown : _hidden;
+        _animDurationMs = shown ? 200 : 140;  // DA §11 : ouverture ~0,2 s, fermeture 0,14 s
+        _animDecelerate = shown;               // entrée en décélération, sortie en accélération
         _clock.Restart();
         _anim.Start();
     }
@@ -199,17 +182,16 @@ internal class GlassWindow : Form
         double p = Math.Clamp(_clock.Elapsed.TotalMilliseconds / _animDurationMs, 0, 1);
         double eased = _animDecelerate ? Bezier(0.2, 0, 0, 1, p) : Bezier(0.3, 0, 1, 1, p);
 
-        ApplyBounds(new Rectangle(
+        Bounds = new Rectangle(
             Lerp(_animFrom.X, _animTo.X, eased),
             Lerp(_animFrom.Y, _animTo.Y, eased),
-            Lerp(_animFrom.Width, _animTo.Width, eased),
-            Lerp(_animFrom.Height, _animTo.Height, eased)));
+            _animTo.Width, _animTo.Height); // taille constante : seule la position glisse
 
         if (p >= 1)
         {
             _anim.Stop();
             _clock.Stop();
-            ApplyBounds(_animTo);
+            Bounds = _animTo;
         }
     }
 
