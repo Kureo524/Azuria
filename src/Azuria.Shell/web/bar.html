@@ -63,7 +63,7 @@
     .clock {
       position: absolute;
       left: 50%; top: 50%; transform: translate(-50%, -50%);
-      display: flex; align-items: baseline; gap: 8px;
+      display: flex; align-items: center; gap: 8px;
       padding: 0 12px; height: 28px; border-radius: var(--r-icon);
       white-space: nowrap;
       transition: background var(--dur-hover) var(--ease-in);
@@ -76,6 +76,13 @@
     .clock .date { color: var(--text-3); font-size: 11px; line-height: 1; }
 
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+
+    /* Recentrage métrique : rogne la boîte de texte à la hauteur de capitale et à la ligne de base,
+       pour que chiffres et lettres soient exactement centrés (sinon les métriques Gothic A1 /
+       Barlow les font paraître trop hauts). Ignoré proprement si le moteur ne le gère pas. */
+    @supports (text-box: trim-both cap alphabetic) {
+      .desk, .azuria, .clock .time, .clock .date { text-box: trim-both cap alphabetic; }
+    }
   </style>
 </head>
 <body>
