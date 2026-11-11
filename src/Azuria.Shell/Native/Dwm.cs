@@ -29,6 +29,13 @@ internal static class Dwm
     [DllImport("dwmapi.dll")]
     private static extern int DwmExtendFrameIntoClientArea(nint hwnd, ref MARGINS margins);
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmFlush();
+
+    /// <summary>Attend le prochain cycle de composition de DWM : cadence une animation sur le
+    /// rafraîchissement de l'écran, pour un mouvement fluide sans saccade.</summary>
+    public static void Flush() => DwmFlush();
+
     /// <summary>Force le thème sombre du cadre et du matériau (sinon l'Acrylic devient gris délavé).</summary>
     public static void UseDarkMode(nint hwnd, bool dark = true)
     {

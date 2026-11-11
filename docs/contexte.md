@@ -31,6 +31,9 @@ simplicité de Windows (jouer à League of Legends, lancer un `.exe`, ne pas viv
 
 - **La disposition du shell** de la section 9 de `docs/da.md` (barre en haut, contenu des panneaux) : proposition
   de Claude, pas encore validée par le propriétaire.
+- **La barre masquée, révélée au bord haut** (demande du propriétaire, façon Caelestia) : cachée par défaut, elle
+  descend quand le curseur touche le haut de l'écran et remonte ensuite. Elle ne fait que glisser (rien ne bouge
+  à l'intérieur). Acté dans la DA §9. (Remplace l'idée de « dynamic island » essayée avant.)
 - **La licence** du dépôt, et le README.
 - **Le gestionnaire de fenêtres** (pavage) : en écrire un, ou s'appuyer sur un existant dont la licence le permet.
 - **Les règles anti-triche de `CLAUDE.md`** (aucun pilote, aucune injection, ne pas toucher à Secure Boot ni au

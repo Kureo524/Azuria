@@ -2,17 +2,41 @@
    Le flou est posé par DWM (Acrylic) derrière la fenêtre ; ici on ne met que le voile
    translucide, le liseré de lumière et les formes. Pas de backdrop-filter : DWM s'en charge. */
 
+/* ---- Polices embarquées (OFL), sous-ensembles latin en woff2 (voir web/fonts/). ---- */
+@font-face {
+  font-family: "Gothic A1"; font-style: normal; font-weight: 400; font-display: block;
+  src: url("fonts/GothicA1-400-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Gothic A1"; font-style: normal; font-weight: 600; font-display: block;
+  src: url("fonts/GothicA1-600-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Gothic A1"; font-style: normal; font-weight: 700; font-display: block;
+  src: url("fonts/GothicA1-700-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed"; font-style: normal; font-weight: 600; font-display: block;
+  src: url("fonts/BarlowCondensed-600-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: block;
+  src: url("fonts/IBMPlexMono-400-latin.woff2") format("woff2");
+}
+
 :root {
-  /* §3 — couleurs (valeurs par défaut) */
+  /* §3 — couleurs (valeurs par défaut).
+     NB : opacité du verre réglée vers l'extrémité « glass » de la plage DA (0,6–1) pour un rendu
+     nettement translucide ; la valeur neutre de la DA reste 0,84. */
   --veil: rgba(11, 12, 17, 0.38);
-  --glass: rgba(20, 22, 30, 0.72);
-  --surface: rgba(16, 18, 25, 0.84);
+  --glass: rgba(20, 22, 30, 0.52);
+  --surface: rgba(16, 18, 25, 0.62);
   --solid: rgb(16, 18, 25);
   --surface-raised: rgba(230, 234, 242, 0.06);
-  --hover: rgba(230, 234, 242, 0.05);
+  --hover: rgba(230, 234, 242, 0.07);
   --border: rgba(230, 234, 242, 0.08);
   --border-strong: rgba(230, 234, 242, 0.15);
-  --rim: rgba(230, 234, 242, 0.2);
+  --rim: rgba(230, 234, 242, 0.22);
   --text: #e6eaf2;
   --text-2: #a2a6b4;
   --text-3: #868a98;
@@ -28,10 +52,13 @@
 
   /* §11 — mouvement */
   --ease-in: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.3, 0, 1, 1);
   --dur-hover: 0.12s;
 
-  /* §5 — typographie (polices embarquées plus tard ; repli système pour le squelette) */
+  /* §5 — typographie (polices embarquées ci-dessus) */
   --font: "Gothic A1", "Segoe UI", system-ui, sans-serif;
+  --font-num: "Barlow Condensed", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
 /* Repli sans flou (DA §6) : le verre devient opaque quand Windows coupe la transparence. */
@@ -54,15 +81,4 @@ html, body {
   -webkit-user-select: none;
   user-select: none;
   cursor: default;
-}
-
-/* Le verre plein : voile translucide + liseré haut/gauche (DA §2, §6). */
-.glass {
-  position: fixed;
-  inset: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-top-color: var(--rim);
-  border-left-color: var(--rim);
-  border-radius: var(--r-bar);
 }

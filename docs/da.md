@@ -174,7 +174,10 @@ elles et avec la barre et les bords. La fenêtre active a une bordure de 1 en `-
 
 Tout est en verre plein, à 12 des bords de l'écran et à 12 les uns des autres.
 
-**Barre** — en haut, sur toute la largeur, hauteur 40, rayon 14. Les fenêtres commencent sous elle.
+**Barre** — en haut, sur toute la largeur, hauteur 40, rayon 14, à 12 des bords. **Masquée par défaut**, façon
+Caelestia : elle **descend** quand le curseur touche le bord haut de l'écran, et **remonte** quand il s'en éloigne.
+Elle ne fait que glisser verticalement (durées et courbes de la section 11) : sa forme et son contenu ne bougent
+pas. Les fenêtres commencent sous elle quand elle est révélée.
 
 - À gauche : bouton Azuria (ouvre le panneau gauche), puis les bureaux (hauteur 28, rayon 9, SemiBold ; actif :
   fond `--accent-soft`, texte `--accent`).
@@ -261,8 +264,9 @@ Le but : que tout paraisse immédiat et doux. Une transition se remarque à pein
 
 - Une seule courbe d'entrée, en décélération : `cubic-bezier(0.2, 0, 0, 1)`. Sortie : `cubic-bezier(0.3, 0, 1, 1)`.
   **Jamais de dépassement** : rien ne rebondit.
-- Seules l'opacité et la position sont animées : c'est ce qui reste fluide à 60 images par seconde et plus, même
-  avec le flou. On n'anime ni le rayon du flou ni la taille d'un panneau.
+- On anime l'opacité, la position et — pour les panneaux et la barre en dynamic island — la **taille**. On n'anime
+  jamais le rayon du flou. Le mouvement doit rester fluide à 60 images par seconde et plus, flou actif (à vérifier
+  sur la machine la plus modeste visée) : si une animation de taille accroche, on la rend par position/opacité.
 - Une animation interrompue repart de là où elle est, sans saut.
 - Rien ne bouge sans action de l'utilisateur, hormis l'arrivée d'une notification.
 - Animations réduites (réglage de Windows ou d'Azuria) : tout passe en fondu simple de 0,12 s.

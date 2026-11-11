@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Azuria.Shell.Native;
 using Microsoft.Web.WebView2.Core;
@@ -9,7 +10,11 @@ namespace Azuria.Shell;
 /// <summary>
 /// Fenêtre de verre d'Azuria : hôte natif sans cadre, toujours au-dessus, hors barre des tâches,
 /// avec l'Acrylic de DWM, qui affiche une page de l'UI (HTML/CSS) dans un WebView2 transparent.
-/// Aucune UI n'est dessinée ici : WinForms ne sert que de fenêtre. La présentation est dans <c>web/</c>.
+///
+/// Coins arrondis par le compositeur (DWMWA_WINDOW_CORNER_PREFERENCE). La fenêtre se révèle en
+/// GLISSANT depuis un bord (comme Caelestia) : on anime seulement sa POSITION, jamais sa taille,
+/// donc le contenu ne bouge pas et ne « stutter » pas. Le curseur est sondé côté C# : une zone
+/// déclenche la révélation, une autre (plus large) la maintient, ce qui évite toute oscillation.
 /// </summary>
 internal class GlassWindow : Form
 {
@@ -20,8 +25,27 @@ internal class GlassWindow : Form
     private readonly WebView2 _web = new();
     private bool _blurAvailable = true;
 
-    /// <param name="page">Nom du fichier dans <c>web/</c> (ex. « bar.html »).</param>
-    public GlassWindow(string page)
+    // Géométrie (pixels physiques), fixée par la classe dérivée.
+    private Rectangle _hidden;     // position cachée (hors écran)
+    private Rectangle _shown;      // position révélée
+    private Rectangle _triggerZone; // curseur ici (caché) → on révèle
+    private Rectangle _keepZone;    // curseur ici (révélé) → on reste ; sinon on cache
+    private bool _shownState;
+    private bool _geometryReady;
+    private bool _animating;
+
+    // Survol (sondage du curseur) et stabilisation du DPI après affichage
+    private readonly System.Windows.Forms.Timer _hover = new() { Interval = 30 };
+    private readonly System.Windows.Forms.Timer _settle = new() { Interval = 50 };
+    private int _settleTicks;
+
+    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint hwnd);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int cx, int cy, uint flags);
+    private const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
+
+    protected GlassWindow(string page)
     {
         _page = page;
 
@@ -29,17 +53,21 @@ internal class GlassWindow : Form
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        // Fond noir : dans le cadre étendu par DWM, le noir devient le matériau (verre). Le WebView2
-        // transparent laisse ce verre transparaître là où l'UI ne peint rien.
-        BackColor = Color.Black;
-        KeyPreview = true;
+        AutoScaleMode = AutoScaleMode.None; // on gère les tailles en pixels physiques
+        BackColor = Color.Black;            // noir = verre, dans le cadre étendu par DWM
 
-        _web.Dock = DockStyle.Fill;
-        _web.DefaultBackgroundColor = Color.Transparent; // laisse passer le verre derrière l'UI
+        _web.Dock = DockStyle.Fill;         // taille de fenêtre constante → pas de re-layout
+        _web.DefaultBackgroundColor = Color.Transparent;
         Controls.Add(_web);
+
+        _hover.Tick += OnHoverTick;
+        _settle.Tick += (_, _) =>
+        {
+            LayoutGeometry();
+            if (++_settleTicks >= 6) { _settle.Stop(); _settleTicks = 0; }
+        };
     }
 
-    // Fenêtre-outil : hors Alt-Tab et hors barre des tâches.
     protected override CreateParams CreateParams
     {
         get
@@ -50,13 +78,45 @@ internal class GlassWindow : Form
         }
     }
 
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        LayoutGeometry();
+        _settle.Start(); // le DPI de la fenêtre n'est fiable qu'après son placement réel
+    }
+
+    /// <summary>DPI réel de la fenêtre (WinForms.DeviceDpi reste parfois bloqué à 96).</summary>
+    protected uint MonitorDpi => IsHandleCreated && GetDpiForWindow(Handle) is var d and > 0 ? d : 96;
+
+    /// <summary>Convertit une taille logique (px à 100 %) en pixels physiques pour cet écran.</summary>
+    protected int Scale(int logical) => (int)Math.Round(logical * MonitorDpi / 96.0);
+
+    /// <summary>Appelé quand la fenêtre doit (re)calculer sa géométrie (affichage, DPI, écran).</summary>
+    protected virtual void LayoutGeometry() { }
+
+    /// <summary>
+    /// Configure la révélation par glissement. <paramref name="triggerZone"/> : où amener le curseur
+    /// pour révéler ; <paramref name="keepZone"/> : où il doit rester pour que ça le reste.
+    /// </summary>
+    protected void ConfigureReveal(Rectangle hidden, Rectangle shown, Rectangle triggerZone, Rectangle keepZone)
+    {
+        _hidden = hidden;
+        _shown = shown;
+        _triggerZone = triggerZone;
+        _keepZone = keepZone;
+        _geometryReady = true;
+        if (!_animating) Bounds = _shownState ? shown : hidden;
+    }
+
+    // ----- cycle de vie / verre -----
+
     protected override async void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
 
         Dwm.UseDarkMode(Handle);
         Dwm.ExtendFrameFull(Handle);
-        Dwm.SetCorner(Handle, Dwm.Corner.DoNotRound); // on gère nous-mêmes le rayon via l'UI
+        Dwm.SetCorner(Handle, Dwm.Corner.Round); // arrondi natif, clippe aussi le matériau DWM
         _blurAvailable = TransparencyEnabled();
         Dwm.SetAcrylic(Handle, _blurAvailable);
 
@@ -65,7 +125,6 @@ internal class GlassWindow : Form
 
     private async Task InitWebAsync()
     {
-        // Dossier de données du WebView2 hors du dossier de l'appli (évite d'écrire à côté de l'exe).
         string dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Azuria", "WebView2");
@@ -76,11 +135,9 @@ internal class GlassWindow : Form
 
         var core = _web.CoreWebView2;
         string webRoot = Path.Combine(AppContext.BaseDirectory, "web");
-        // Sert le dossier web/ sous une origine locale stable (évite les limites de file://).
         core.SetVirtualHostNameToFolderMapping(
             "azuria.local", webRoot, CoreWebView2HostResourceAccessKind.Allow);
 
-        // Confort pour un shell : pas de menu contextuel, pas de raccourcis navigateur.
         core.Settings.AreDefaultContextMenusEnabled = false;
         core.Settings.AreBrowserAcceleratorKeysEnabled = false;
         core.Settings.IsStatusBarEnabled = false;
@@ -88,6 +145,73 @@ internal class GlassWindow : Form
 
         ApplyBlurClass();
         core.Navigate($"https://azuria.local/{_page}");
+
+        _hover.Start(); // le survol pilote la révélation (voir OnHoverTick)
+    }
+
+    // ----- révélation par glissement : survol sondé -----
+
+    private void OnHoverTick(object? sender, EventArgs e)
+    {
+        if (!_geometryReady || _animating) return;
+        GetCursorPos(out POINT p);
+        var cursor = new Point(p.X, p.Y);
+        Rectangle hot = _shownState ? _keepZone : _triggerZone;
+        bool want = hot.Contains(cursor);
+        if (want != _shownState) Slide(want);
+    }
+
+    /// <summary>
+    /// Glisse la fenêtre entre caché et révélé, cadencé par DWM (synchronisé au rafraîchissement) :
+    /// c'est ce qui rend le mouvement fluide, là où un timer WinForms saccadait. Seule la position
+    /// change (taille constante), donc rien ne se remet en page pendant le glissé.
+    /// </summary>
+    private void Slide(bool shown)
+    {
+        _shownState = shown;
+        _animating = true;
+        try
+        {
+            var from = Bounds;
+            var to = shown ? _shown : _hidden;
+            double dur = shown ? 200 : 140;   // DA §11 : ouverture ~0,2 s, fermeture 0,14 s
+            var sw = Stopwatch.StartNew();
+            while (true)
+            {
+                double t = sw.Elapsed.TotalMilliseconds;
+                if (t >= dur) break;
+                double p = t / dur;
+                double e = shown ? Bezier(0.2, 0, 0, 1, p)   // entrée : décélération
+                                 : Bezier(0.3, 0, 1, 1, p);  // sortie : accélération
+                int y = Lerp(from.Y, to.Y, e);
+                SetWindowPos(Handle, 0, to.X, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                Dwm.Flush();
+            }
+            SetWindowPos(Handle, 0, to.X, to.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        finally { _animating = false; }
+    }
+
+    private static int Lerp(int a, int b, double t) => (int)Math.Round(a + (b - a) * t);
+
+    // Courbe de Bézier cubique (x->y) résolue par Newton, comme en CSS.
+    private static double Bezier(double x1, double y1, double x2, double y2, double x)
+    {
+        x = Math.Clamp(x, 0, 1);
+        double t = x;
+        for (int i = 0; i < 6; i++)
+        {
+            double xt = Bez(x1, x2, t) - x;
+            double dxt = BezD(x1, x2, t);
+            if (Math.Abs(dxt) < 1e-6) break;
+            t = Math.Clamp(t - xt / dxt, 0, 1);
+        }
+        return Bez(y1, y2, t);
+
+        static double Bez(double a, double b, double t) =>
+            3 * (1 - t) * (1 - t) * t * a + 3 * (1 - t) * t * t * b + t * t * t;
+        static double BezD(double a, double b, double t) =>
+            3 * (1 - t) * (1 - t) * a + 6 * (1 - t) * t * (b - a) + 3 * t * t * (1 - b);
     }
 
     // ----- repli quand la transparence de Windows est coupée -----
@@ -107,7 +231,6 @@ internal class GlassWindow : Form
         base.WndProc(ref m);
     }
 
-    /// <summary>Prévient l'UI de l'état du flou : la classe CSS <c>no-blur</c> déclenche le repli --solid.</summary>
     private void ApplyBlurClass()
     {
         var core = _web.CoreWebView2;
@@ -127,12 +250,5 @@ internal class GlassWindow : Form
             return key?.GetValue("EnableTransparency") is not int v || v != 0;
         }
         catch { return true; }
-    }
-
-    /// <summary>Place la fenêtre en coordonnées physiques (pixels écran).</summary>
-    public void PlacePhysical(int x, int y, int width, int height)
-    {
-        Location = new Point(x, y);
-        Size = new Size(width, height);
     }
 }
