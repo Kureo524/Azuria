@@ -1,0 +1,68 @@
+/* DA « Encre » — jetons et recette du verre (docs/da.md).
+   Le flou est posé par DWM (Acrylic) derrière la fenêtre ; ici on ne met que le voile
+   translucide, le liseré de lumière et les formes. Pas de backdrop-filter : DWM s'en charge. */
+
+:root {
+  /* §3 — couleurs (valeurs par défaut) */
+  --veil: rgba(11, 12, 17, 0.38);
+  --glass: rgba(20, 22, 30, 0.72);
+  --surface: rgba(16, 18, 25, 0.84);
+  --solid: rgb(16, 18, 25);
+  --surface-raised: rgba(230, 234, 242, 0.06);
+  --hover: rgba(230, 234, 242, 0.05);
+  --border: rgba(230, 234, 242, 0.08);
+  --border-strong: rgba(230, 234, 242, 0.15);
+  --rim: rgba(230, 234, 242, 0.2);
+  --text: #e6eaf2;
+  --text-2: #a2a6b4;
+  --text-3: #868a98;
+  --accent: #8fa4cc;
+  --accent-text: #adbfe0;
+  --accent-soft: rgba(143, 164, 204, 0.14);
+  --accent-tint: rgba(143, 164, 204, 0.42);
+
+  /* §8 — rayons */
+  --r-bar: 14px;
+  --r-pill: 9px;
+  --r-icon: 8px;
+
+  /* §11 — mouvement */
+  --ease-in: cubic-bezier(0.2, 0, 0, 1);
+  --dur-hover: 0.12s;
+
+  /* §5 — typographie (polices embarquées plus tard ; repli système pour le squelette) */
+  --font: "Gothic A1", "Segoe UI", system-ui, sans-serif;
+}
+
+/* Repli sans flou (DA §6) : le verre devient opaque quand Windows coupe la transparence. */
+html.no-blur {
+  --surface: var(--solid);
+  --glass: var(--solid);
+  --veil: rgb(11, 12, 17);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  /* Transparent : c'est le verre de DWM qui remplit le fond (voir flou-windows.md). */
+  background: transparent;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font);
+  color: var(--text);
+  font-size: 12px;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+/* Le verre plein : voile translucide + liseré haut/gauche (DA §2, §6). */
+.glass {
+  position: fixed;
+  inset: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top-color: var(--rim);
+  border-left-color: var(--rim);
+  border-radius: var(--r-bar);
+}

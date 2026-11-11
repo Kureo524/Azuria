@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azuria — barre</title>
+  <link rel="stylesheet" href="encre.css">
+  <style>
+    /* Barre (DA §9) : trois groupes, séparateurs verticaux, hauteur de la fenêtre. */
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 100%;
+      padding: 0 8px;
+    }
+    .group { display: flex; align-items: center; gap: 6px; }
+    .spacer { flex: 1; }
+
+    .sep { width: 1px; height: 20px; background: var(--border-strong); }
+
+    /* Bouton Azuria + boutons-icônes (DA §10) */
+    .icon-btn {
+      display: grid; place-items: center;
+      height: 28px; min-width: 28px; padding: 0 8px;
+      border-radius: var(--r-icon);
+      color: var(--text-3);
+      transition: background var(--dur-hover) var(--ease-in),
+                  color var(--dur-hover) var(--ease-in);
+    }
+    .icon-btn:hover { background: var(--hover); color: var(--text); }
+    .azuria { font-weight: 700; color: var(--text); font-size: 13px; }
+
+    /* Bureaux : pastilles hauteur 28, rayon 9, actif en accent (DA §9) */
+    .desk {
+      height: 28px; min-width: 28px; padding: 0 10px;
+      display: grid; place-items: center;
+      border-radius: var(--r-pill);
+      color: var(--text-2); font-weight: 600;
+      transition: background var(--dur-hover) var(--ease-in),
+                  color var(--dur-hover) var(--ease-in);
+    }
+    .desk:hover { background: var(--hover); color: var(--text); }
+    .desk.active { background: var(--accent-soft); color: var(--accent); }
+
+    /* Centre : heure + date, cliquable (ouvrira le tableau de bord) */
+    .clock { text-align: center; line-height: 1.1; padding: 0 8px; border-radius: var(--r-icon); }
+    .clock:hover { background: var(--hover); }
+    .clock .time { font-weight: 700; font-size: 13px; }
+    .clock .date { color: var(--text-3); font-size: 10px; }
+
+    /* Pastilles d'état à droite (réseau, son, batterie — placeholders) */
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+  </style>
+</head>
+<body>
+  <div class="glass"></div>
+  <div class="bar">
+    <!-- Gauche : bouton Azuria + bureaux -->
+    <div class="group">
+      <div class="icon-btn azuria" title="Azuria">A</div>
+      <div class="desk active">1</div>
+      <div class="desk">2</div>
+      <div class="desk">3</div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- Centre : heure et date -->
+    <div class="clock" id="clock">
+      <div class="time" id="time">00:00</div>
+      <div class="date" id="date">—</div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- Droite : état + bouton panneau -->
+    <div class="group">
+      <div class="icon-btn"><span class="dot"></span></div>
+      <div class="icon-btn"><span class="dot"></span></div>
+      <div class="icon-btn"><span class="dot"></span></div>
+      <div class="sep"></div>
+      <div class="icon-btn" title="Panneau">☰</div>
+    </div>
+  </div>
+
+  <script>
+    // Horloge locale. Le reste (vrais bureaux, état système) viendra du C# plus tard.
+    const jours = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
+    const mois = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
+    function tick() {
+      const d = new Date();
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      document.getElementById('time').textContent = `${hh}:${mm}`;
+      document.getElementById('date').textContent = `${jours[d.getDay()]} ${d.getDate()} ${mois[d.getMonth()]}`;
+    }
+    tick();
+    setInterval(tick, 1000);
+  </script>
+</body>
+</html>
