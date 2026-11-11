@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azuria — panneau gauche</title>
+  <link rel="stylesheet" href="encre.css">
+  <style>
+    /* Panneau gauche : lanceur (DA §9). Contenu factice pour l'instant. */
+    .glass {
+      position: fixed; inset: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top-color: var(--rim);
+      border-left-color: var(--rim);
+    }
+    .panel {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; gap: 14px;
+      padding: 14px; overflow-y: auto;
+    }
+    .panel::-webkit-scrollbar { width: 8px; }
+    .panel::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 4px; }
+
+    .search {
+      height: 36px; flex: 0 0 auto;
+      background: var(--input); color: var(--text);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 0 12px; font-family: var(--font); font-size: 12px;
+      outline: none;
+    }
+    .search::placeholder { color: var(--text-3); }
+    .search:focus { border-color: var(--accent); }
+
+    .label { color: var(--text-2); font-weight: 700; font-size: 12px; }
+
+    /* Épinglées : grille de tuiles */
+    .pins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .tile {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      padding: 8px 4px; border-radius: 12px;
+      transition: background var(--dur-hover) var(--ease-in);
+    }
+    .tile:hover { background: var(--hover); }
+    .ic {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      display: grid; place-items: center; color: var(--text-2);
+      font-weight: 700; font-size: 15px; line-height: 1;
+    }
+    .tile .name { font-size: 11px; color: var(--text-2); text-align: center; line-height: 1.1; }
+
+    /* Liste d'applications */
+    .list { display: flex; flex-direction: column; gap: 2px; }
+    .row {
+      display: flex; align-items: center; gap: 10px;
+      height: 36px; padding: 0 8px; border-radius: 10px;
+      transition: background var(--dur-hover) var(--ease-in);
+    }
+    .row:hover { background: var(--hover); }
+    .row .ic { width: 24px; height: 24px; border-radius: 7px; font-size: 11px; }
+    .row .name { font-size: 12px; color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="glass"></div>
+  <div class="panel">
+    <input class="search" placeholder="Rechercher applications, fichiers, réglages…">
+
+    <div class="label">Épinglées</div>
+    <div class="pins" id="pins"></div>
+
+    <div class="label">Applications</div>
+    <div class="list" id="list"></div>
+  </div>
+
+  <script>
+    // Contenu factice (placeholders) — remplacé plus tard par les vraies applications via le C#.
+    const pins = ['Navigateur', 'Fichiers', 'Terminal', 'Réglages', 'Musique', 'Photos', 'Discord', 'Code'];
+    const apps = ['Appareil photo', 'Calculatrice', 'Calendrier', 'Carte', 'Courrier', 'Horloge',
+                  'Lecteur vidéo', 'Météo', 'Notes', 'Paramètres', 'Store'];
+    const letter = (s) => s[0].toUpperCase();
+    document.getElementById('pins').innerHTML = pins.map(n =>
+      `<div class="tile"><div class="ic">${letter(n)}</div><div class="name">${n}</div></div>`).join('');
+    document.getElementById('list').innerHTML = apps.map(n =>
+      `<div class="row"><div class="ic">${letter(n)}</div><div class="name">${n}</div></div>`).join('');
+  </script>
+</body>
+</html>

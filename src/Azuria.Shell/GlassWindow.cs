@@ -183,8 +183,10 @@ internal class GlassWindow : Form
                 double p = t / dur;
                 double e = shown ? Bezier(0.2, 0, 0, 1, p)   // entrée : décélération
                                  : Bezier(0.3, 0, 1, 1, p);  // sortie : accélération
+                // On interpole les deux axes : glissé vertical (barre) ou horizontal (panneaux).
+                int x = Lerp(from.X, to.X, e);
                 int y = Lerp(from.Y, to.Y, e);
-                SetWindowPos(Handle, 0, to.X, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                SetWindowPos(Handle, 0, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
                 Dwm.Flush();
             }
             SetWindowPos(Handle, 0, to.X, to.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);

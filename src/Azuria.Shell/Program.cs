@@ -18,8 +18,7 @@ internal static class Program
 
         ApplicationConfiguration.Initialize();
 
-        // Squelette : pour l'instant, seule la barre. Les panneaux, le tableau de bord, etc.
-        // viendront comme d'autres GlassWindow (DA §9).
-        Application.Run(new BarWindow());
+        // Le shell : panneau haut + panneaux latéraux gauche/droit (DA §9).
+        Application.Run(new ShellContext());
     }
 }

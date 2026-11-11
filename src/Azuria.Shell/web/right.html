@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azuria — panneau droit</title>
+  <link rel="stylesheet" href="encre.css">
+  <style>
+    /* Panneau droit : réglages rapides + notifications (DA §9). Contenu factice. */
+    .glass {
+      position: fixed; inset: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top-color: var(--rim);
+      border-left-color: var(--rim);
+    }
+    .panel {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; gap: 14px;
+      padding: 14px; overflow-y: auto;
+    }
+    .panel::-webkit-scrollbar { width: 8px; }
+    .panel::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 4px; }
+
+    .label { color: var(--text-2); font-weight: 700; font-size: 12px; }
+    .head { display: flex; align-items: center; justify-content: space-between; }
+
+    /* Réglages rapides : grille de bascules */
+    .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .toggle {
+      display: flex; align-items: center; gap: 10px;
+      height: 48px; padding: 0 12px; border-radius: 12px;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      color: var(--text-2); font-size: 12px;
+      transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
+    }
+    .toggle .ic {
+      width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+      background: var(--input); color: var(--text-3); font-weight: 700; line-height: 1;
+    }
+    .toggle.on { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+    .toggle.on .ic { background: var(--accent-tint); color: #fff; }
+
+    /* Curseurs */
+    .slider { display: flex; flex-direction: column; gap: 6px; }
+    .slider .top { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); }
+    .track { height: 6px; border-radius: 3px; background: var(--surface-raised); position: relative; }
+    .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); }
+    .fill::after {
+      content: ''; position: absolute; right: -6px; top: 50%; transform: translateY(-50%);
+      width: 12px; height: 12px; border-radius: 50%; background: var(--accent);
+    }
+
+    /* Notifications */
+    .card {
+      display: flex; gap: 10px; padding: 10px 12px; border-radius: 12px;
+      background: var(--surface-raised); border: 1px solid var(--border);
+    }
+    .card .ic {
+      width: 28px; height: 28px; border-radius: 8px; flex: 0 0 auto; display: grid; place-items: center;
+      background: var(--input); color: var(--text-3); font-weight: 700; line-height: 1;
+    }
+    .card .body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .card .title { font-size: 12px; font-weight: 700; color: var(--text); }
+    .card .text { font-size: 11px; color: var(--text-2); }
+
+    .clear {
+      height: 24px; padding: 0 10px; border-radius: 8px; font-size: 11px;
+      background: rgba(230,234,242,0.04); border: 1px solid var(--border); color: var(--text-2);
+    }
+    .clear:hover { background: var(--hover); color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="glass"></div>
+  <div class="panel">
+    <div class="label">Réglages rapides</div>
+    <div class="quick">
+      <div class="toggle on"><div class="ic">W</div>Wi-Fi</div>
+      <div class="toggle"><div class="ic">B</div>Bluetooth</div>
+      <div class="toggle"><div class="ic">J</div>Mode jeu</div>
+      <div class="toggle"><div class="ic">N</div>Ne pas déranger</div>
+    </div>
+
+    <div class="slider">
+      <div class="top"><span>Volume</span><span>60 %</span></div>
+      <div class="track"><div class="fill" style="width:60%"></div></div>
+    </div>
+    <div class="slider">
+      <div class="top"><span>Luminosité</span><span>80 %</span></div>
+      <div class="track"><div class="fill" style="width:80%"></div></div>
+    </div>
+
+    <div class="head">
+      <div class="label">Notifications</div>
+      <button class="clear">Tout effacer</button>
+    </div>
+    <div class="card"><div class="ic">M</div><div class="body">
+      <div class="title">Messagerie</div><div class="text">Nouveau message de l'équipe.</div></div></div>
+    <div class="card"><div class="ic">A</div><div class="body">
+      <div class="title">Azuria</div><div class="text">Panneaux latéraux en place (version d'essai).</div></div></div>
+    <div class="card"><div class="ic">S</div><div class="body">
+      <div class="title">Système</div><div class="text">Mise à jour disponible.</div></div></div>
+  </div>
+</body>
+</html>
