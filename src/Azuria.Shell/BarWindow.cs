@@ -7,10 +7,11 @@ namespace Azuria.Shell;
 /// </summary>
 internal sealed class BarWindow : GlassWindow
 {
-    private const int MarginTopLogical = 12; // DA §4 : marge avec le bord haut
     private const int WidthLogical = 560;    // moins large que l'écran
     private const int HeightLogical = 96;    // descend plus bas qu'une simple barre
     private const int TriggerLogical = 3;    // épaisseur de la bande de déclenchement en haut
+    private const int OvershootLogical = 10; // on fait dépasser le haut arrondi au-dessus de l'écran
+                                             // pour que le bord haut visible soit droit et collé
 
     public BarWindow() : base("bar.html") { }
 
@@ -24,13 +25,16 @@ internal sealed class BarWindow : GlassWindow
     {
         if (!IsHandleCreated) return;
         var work = Screen.FromHandle(Handle).WorkingArea; // pixels physiques
-        int margin = Scale(MarginTopLogical);
         int width = Scale(WidthLogical);
-        int height = Scale(HeightLogical);
+        int over = Scale(OvershootLogical);
+        // La fenêtre inclut le dépassement : sa partie haute arrondie reste hors écran, le bord
+        // haut visible est donc droit et collé au bord. La hauteur visible reste celle voulue.
+        int height = Scale(HeightLogical) + over;
         int x = work.Left + (work.Width - width) / 2; // centré
 
-        var shown = new Rectangle(x, work.Top + margin, width, height);
-        var hidden = new Rectangle(x, work.Top - height - margin, width, height); // entièrement au-dessus
+        // Révélé : collé au bord haut (le dépassement « over » passe au-dessus de l'écran).
+        var shown = new Rectangle(x, work.Top - over, width, height);
+        var hidden = new Rectangle(x, work.Top - height - over, width, height); // entièrement au-dessus
 
         // Déclenchement : une fine bande en haut, au-dessus du panneau (là où il descend).
         var trigger = new Rectangle(x, work.Top, width, Scale(TriggerLogical));
