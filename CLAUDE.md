@@ -3,6 +3,8 @@
 Projet en démarrage : pas encore de code. Dépôt public `Kureo524/Azuria`. Langue de travail : français (commits,
 PR, docs).
 
+Avant de commencer, lire `docs/contexte.md` : les décisions déjà prises, ce qui reste ouvert, et la prochaine étape.
+
 ## Cap du projet
 
 Azuria est un **environnement de bureau pour Windows 11** qui donne le feeling de Caelestia (Arch + Hyprland) à une
@@ -32,7 +34,8 @@ branche, ruleset), donner la commande `gh` au propriétaire au lieu de contourne
 ## Direction artistique
 
 Toute interface suit `docs/da.md` (DA « Encre ») : la lire avant de toucher à l'UI et passer sa checklist
-(section 14) avant de livrer. La section 13 liste ce qui reste à prouver sur Windows.
+(section 14) avant de livrer. La section 13 liste ce qui reste à prouver sur Windows. Pour le verre flouté, partir de
+`docs/flou-windows.md` (méthode éprouvée sur Manhwadle).
 
 On s'inspire des idées de Caelestia (organisation, fonctionnalités), jamais de son code ni de ses fichiers : son
 dépôt est sous GPL-3.0 et Azuria n'en reprend rien.
