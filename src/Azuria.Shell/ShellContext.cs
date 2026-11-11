@@ -11,7 +11,8 @@ internal sealed class ShellContext : ApplicationContext
     public ShellContext()
     {
         Add(new BarWindow());
-        Add(new SidePanelWindow("right.html", right: true));
+        Add(new SidePanelWindow("left.html", right: false, widthLogical: 56));  // rail d'icônes fin
+        Add(new SidePanelWindow("right.html", right: true, widthLogical: 380)); // réglages + notifs
 
         foreach (var w in _windows) w.Show();
     }

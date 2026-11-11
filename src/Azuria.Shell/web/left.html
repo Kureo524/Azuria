@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azuria — rail</title>
+  <link rel="stylesheet" href="encre.css">
+  <style>
+    /* Rail d'icônes gauche : fin, pleine hauteur, rien que des icônes. */
+    .glass {
+      position: fixed; inset: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top-color: var(--rim);
+      border-left-color: var(--rim);
+    }
+    .rail {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 8px; padding: 10px 0;
+    }
+    .spacer { flex: 1 1 auto; }
+
+    .ic {
+      width: 40px; height: 40px; flex: 0 0 auto;
+      border-radius: 11px;
+      display: grid; place-items: center;
+      color: var(--text-2); font-weight: 700; font-size: 15px; line-height: 1;
+      transition: background var(--dur-hover) var(--ease-in),
+                  color var(--dur-hover) var(--ease-in);
+    }
+    .ic:hover { background: var(--hover); color: var(--text); }
+    /* Icône active : fond accent doux, teinte accent (DA §10). */
+    .ic.active { background: var(--accent-soft); color: var(--accent); }
+    /* Logo Azuria en tête, un peu plus marqué. */
+    .logo { color: var(--text); font-size: 17px; }
+
+    .sep { width: 24px; height: 1px; background: var(--border-strong); flex: 0 0 auto; }
+  </style>
+</head>
+<body>
+  <div class="glass"></div>
+  <div class="rail" id="rail"></div>
+
+  <script>
+    // Icônes factices (lettres) — remplacées plus tard par de vraies icônes au trait via le C#.
+    const top = [
+      { t: 'A', cls: 'logo' },      // Azuria
+      { t: 'sep' },
+      { t: 'N', cls: 'active' },    // Navigateur (actif, exemple)
+      { t: 'F' },                   // Fichiers
+      { t: 'T' },                   // Terminal
+      { t: 'C' },                   // Code
+      { t: 'M' },                   // Musique
+    ];
+    const bottom = [
+      { t: 'sep' },
+      { t: 'P' },                   // Performances
+      { t: '⚙' },                   // Réglages
+    ];
+    const render = (items) => items.map(i =>
+      i.t === 'sep' ? '<div class="sep"></div>'
+                    : `<div class="ic ${i.cls || ''}">${i.t}</div>`).join('');
+    document.getElementById('rail').innerHTML =
+      render(top) + '<div class="spacer"></div>' + render(bottom);
+  </script>
+</body>
+</html>

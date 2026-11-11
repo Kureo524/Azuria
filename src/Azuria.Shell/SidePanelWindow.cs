@@ -8,13 +8,17 @@ namespace Azuria.Shell;
 internal sealed class SidePanelWindow : GlassWindow
 {
     private const int MarginLogical = 12;   // DA §4 : marge haut/bas
-    private const int WidthLogical = 380;   // DA §9 : largeur des panneaux
     private const int TriggerLogical = 3;   // épaisseur de la bande de déclenchement au bord
     private const int OvershootLogical = 10; // dépassement hors écran côté bord → bord collé et droit
 
     private readonly bool _right;
+    private readonly int _widthLogical;
 
-    public SidePanelWindow(string page, bool right) : base(page) => _right = right;
+    public SidePanelWindow(string page, bool right, int widthLogical) : base(page)
+    {
+        _right = right;
+        _widthLogical = widthLogical;
+    }
 
     protected override void OnDpiChanged(DpiChangedEventArgs e)
     {
@@ -27,7 +31,7 @@ internal sealed class SidePanelWindow : GlassWindow
         if (!IsHandleCreated) return;
         var work = Screen.FromHandle(Handle).WorkingArea; // pixels physiques
         int margin = Scale(MarginLogical);
-        int visibleW = Scale(WidthLogical);
+        int visibleW = Scale(_widthLogical);
         int over = Scale(OvershootLogical);
         int width = visibleW + over;   // la fenêtre inclut le dépassement (hors écran côté bord)
         int trig = Scale(TriggerLogical);
