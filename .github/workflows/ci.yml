@@ -1,0 +1,44 @@
+name: CI
+
+# Build Windows à chaque PR et à chaque arrivée sur dev / main (docs/contexte.md §5).
+# L'exécutable publié est joint en artefact : le propriétaire le télécharge et le juge
+# sur l'écran physique (le flou et la fluidité ne se jugent pas sur une image compressée).
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restaurer
+        run: dotnet restore Azuria.sln
+
+      - name: Compiler (Release)
+        run: dotnet build Azuria.sln -c Release --no-restore
+
+      - name: Publier le shell (autonome, win-x64)
+        run: >
+          dotnet publish src/Azuria.Shell/Azuria.Shell.csproj
+          -c Release -r win-x64 --self-contained true
+          -o publish
+
+      - name: Joindre l'exécutable en artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: azuria-shell-win-x64
+          path: publish/
+          if-no-files-found: error
