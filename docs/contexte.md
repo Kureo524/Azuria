@@ -24,11 +24,11 @@ simplicité de Windows (jouer à League of Legends, lancer un `.exe`, ne pas viv
    reste de l'apparence.
 5. **Fluide et agréable, sans surcharge** : transitions courtes, aucun rebond (section 11 de `docs/da.md`).
 6. **Dépôt public**, destiné à être montré sur un CV : historique git propre, règles de `docs/git.md`.
+7. **Technologie : C# .NET 8 (cœur natif) + WebView2 (interface HTML/CSS).** Décidé après le prototype,
+   critère « optimisé avant tout » du propriétaire. Détail et alternatives écartées dans `docs/techno.md`.
 
 ## 3. Ce qui n'est pas décidé
 
-- **La technologie** (langage, bibliothèque d'interface). Rien n'est choisi. Le prototype du verre doit orienter
-  ce choix : on prend ce qui donne le flou voulu et reste fluide.
 - **La disposition du shell** de la section 9 de `docs/da.md` (barre en haut, contenu des panneaux) : proposition
   de Claude, pas encore validée par le propriétaire.
 - **La licence** du dépôt, et le README.
