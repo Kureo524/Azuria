@@ -1,3 +1,6 @@
 bin/
 obj/
 *.user
+
+# Build locale pour tester à la main (hors dépôt).
+build/

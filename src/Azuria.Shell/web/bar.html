@@ -12,8 +12,8 @@
 
     body { position: relative; }
 
-    /* Le verre : voile translucide + liseré haut/gauche. Les coins sont arrondis par la fenêtre
-       (DWM/région côté C#), donc ici un simple fond plein qui sera découpé proprement. */
+    /* Le verre : voile translucide + liseré haut/gauche. L'arrondi est fait UNIQUEMENT par la
+       fenêtre (compositeur DWM) : bord franc ici, pour que l'arrondi intérieur = extérieur. */
     .glass {
       position: fixed;
       inset: 0;
@@ -21,7 +21,6 @@
       border: 1px solid var(--border);
       border-top-color: var(--rim);
       border-left-color: var(--rim);
-      border-radius: var(--r-bar);
     }
 
     .bar { position: absolute; inset: 0; }

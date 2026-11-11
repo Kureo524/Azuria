@@ -28,6 +28,7 @@ internal class GlassWindow : Form
     // Géométrie (pixels physiques) : les deux états, fixés par la classe dérivée.
     private Rectangle _collapsed;
     private Rectangle _expanded;
+    private Size _contentSize;   // taille FIXE du WebView2 = état étendu (évite tout re-layout)
     private bool _expandedState;
     private bool _geometryReady;
 
@@ -58,7 +59,8 @@ internal class GlassWindow : Form
         AutoScaleMode = AutoScaleMode.None; // on gère les tailles en pixels physiques
         BackColor = Color.Black;            // noir = verre, dans le cadre étendu par DWM
 
-        _web.Dock = DockStyle.Fill;
+        // Le WebView2 a une taille FIXE (état étendu) et reste centré : quand la fenêtre rétrécit,
+        // elle le rogne autour du centre. Le contenu n'est jamais re-mis en page → pas de « stutter ».
         _web.DefaultBackgroundColor = Color.Transparent;
         Controls.Add(_web);
 
@@ -102,11 +104,21 @@ internal class GlassWindow : Form
     {
         _collapsed = collapsed;
         _expanded = expanded;
+        _contentSize = expanded.Size;
         _geometryReady = true;
+        _web.Size = _contentSize; // taille fixe (état étendu)
         if (!_anim.Enabled) ApplyBounds(_expandedState ? expanded : collapsed);
     }
 
-    private void ApplyBounds(Rectangle r) => Bounds = r; // coins arrondis par DWM, pas de région
+    private void ApplyBounds(Rectangle r)
+    {
+        Bounds = r; // coins arrondis par DWM, pas de région
+        // Garde le WebView2 (taille fixe) centré ; quand la fenêtre est plus petite, il déborde et
+        // se fait rogner. On ne change que sa position (jamais sa taille) → aucun re-layout.
+        _web.Location = new Point(
+            (ClientSize.Width - _web.Width) / 2,
+            (ClientSize.Height - _web.Height) / 2);
+    }
 
     // ----- cycle de vie / verre -----
 
