@@ -12,7 +12,7 @@ internal sealed class ShellContext : ApplicationContext
     {
         Add(new BarWindow());
         Add(new SidePanelWindow("left.html", right: false, widthLogical: 56));  // rail d'icônes fin
-        Add(new SidePanelWindow("right.html", right: true, widthLogical: 320)); // réglages + notifs
+        Add(new SidePanelWindow("right.html", right: true, widthLogical: 200)); // réglages + notifs
 
         foreach (var w in _windows) w.Show();
     }

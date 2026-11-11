@@ -24,8 +24,7 @@ internal sealed class BarWindow : GlassWindow
     protected override void LayoutGeometry()
     {
         if (!IsHandleCreated) return;
-        // Toujours sur l'écran principal (sinon une fenêtre peut atterrir sur un autre moniteur).
-        var work = (Screen.PrimaryScreen ?? Screen.FromHandle(Handle)).WorkingArea; // pixels physiques
+        var work = WorkArea; // écran cible (voir GlassWindow.TargetScreen), pixels physiques
         int width = Scale(WidthLogical);
         int over = Scale(OvershootLogical);
         // La fenêtre inclut le dépassement : sa partie haute arrondie reste hors écran, le bord

@@ -28,9 +28,7 @@ internal sealed class SidePanelWindow : GlassWindow
     protected override void LayoutGeometry()
     {
         if (!IsHandleCreated) return;
-        // Toujours sur l'écran principal (sinon une fenêtre peut atterrir sur un autre moniteur,
-        // et sa position « cachée » retomber sur l'écran principal → visible en permanence).
-        var work = (Screen.PrimaryScreen ?? Screen.FromHandle(Handle)).WorkingArea;
+        var work = WorkArea; // écran cible (voir GlassWindow.TargetScreen)
         int visibleW = Scale(_widthLogical);
         int over = Scale(OvershootLogical);
         int width = visibleW + over;   // la fenêtre inclut le dépassement (hors écran côté bord)

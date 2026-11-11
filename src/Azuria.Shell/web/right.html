@@ -25,13 +25,13 @@
     .label { color: var(--text-2); font-weight: 700; font-size: 12px; }
     .head { display: flex; align-items: center; justify-content: space-between; }
 
-    /* Réglages rapides : grille de bascules */
+    /* Réglages rapides : grille de bascules compactes (icône + libellé court), adaptée à un panneau étroit */
     .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .toggle {
-      display: flex; align-items: center; gap: 10px;
-      height: 48px; padding: 0 12px; border-radius: 12px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+      height: 64px; padding: 8px; border-radius: 12px;
       background: var(--surface-raised); border: 1px solid var(--border);
-      color: var(--text-2); font-size: 12px;
+      color: var(--text-2); font-size: 11px; text-align: center; line-height: 1;
       transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
     }
     .toggle .ic {
@@ -76,10 +76,10 @@
   <div class="panel">
     <div class="label">Réglages rapides</div>
     <div class="quick">
-      <div class="toggle on"><div class="ic">W</div>Wi-Fi</div>
-      <div class="toggle"><div class="ic">B</div>Bluetooth</div>
-      <div class="toggle"><div class="ic">J</div>Mode jeu</div>
-      <div class="toggle"><div class="ic">N</div>Ne pas déranger</div>
+      <div class="toggle on"><div class="ic">W</div><span>Wi-Fi</span></div>
+      <div class="toggle"><div class="ic">B</div><span>Bluetooth</span></div>
+      <div class="toggle"><div class="ic">J</div><span>Mode jeu</span></div>
+      <div class="toggle"><div class="ic">S</div><span>Silence</span></div>
     </div>
 
     <div class="slider">

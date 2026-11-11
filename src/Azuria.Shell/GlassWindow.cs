@@ -20,6 +20,7 @@ internal class GlassWindow : Form
 {
     private const int WM_SETTINGCHANGE = 0x001A;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_EX_NOACTIVATE = 0x08000000;
 
     private readonly string _page;
     private readonly WebView2 _web = new();
@@ -41,7 +42,8 @@ internal class GlassWindow : Form
 
     [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
-    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint hwnd);
+    [DllImport("user32.dll")] private static extern nint MonitorFromPoint(POINT pt, uint flags);
+    [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(nint hmon, int type, out uint x, out uint y);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int cx, int cy, uint flags);
     private const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
 
@@ -73,7 +75,7 @@ internal class GlassWindow : Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= WS_EX_TOOLWINDOW;
+            cp.ExStyle |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE; // hors Alt-Tab, et ne vole pas le focus
             return cp;
         }
     }
@@ -85,11 +87,32 @@ internal class GlassWindow : Form
         _settle.Start(); // le DPI de la fenêtre n'est fiable qu'après son placement réel
     }
 
-    /// <summary>DPI réel de la fenêtre (WinForms.DeviceDpi reste parfois bloqué à 96).</summary>
-    protected uint MonitorDpi => IsHandleCreated && GetDpiForWindow(Handle) is var d and > 0 ? d : 96;
+    /// <summary>
+    /// Écran cible du shell : l'écran secondaire (celui qu'on utilise), sinon le principal.
+    /// (Heuristique « deuxième écran » ; un vrai réglage de moniteur viendra plus tard.)
+    /// </summary>
+    protected static Screen TargetScreen =>
+        Array.Find(Screen.AllScreens, s => !s.Primary) ?? Screen.PrimaryScreen!;
 
-    /// <summary>Convertit une taille logique (px à 100 %) en pixels physiques pour cet écran.</summary>
-    protected int Scale(int logical) => (int)Math.Round(logical * MonitorDpi / 96.0);
+    protected Rectangle WorkArea => TargetScreen.WorkingArea;
+
+    /// <summary>
+    /// DPI de l'écran cible, lu sur le moniteur (pas sur la fenêtre) : fiable même quand la fenêtre
+    /// est masquée ou pas encore sur cet écran. Nécessite PerMonitorV2 (forcé dans Program).
+    /// </summary>
+    protected uint TargetDpi
+    {
+        get
+        {
+            var b = TargetScreen.Bounds;
+            var pt = new POINT { X = b.Left + b.Width / 2, Y = b.Top + b.Height / 2 };
+            nint mon = MonitorFromPoint(pt, 2 /* MONITOR_DEFAULTTONEAREST */);
+            return GetDpiForMonitor(mon, 0 /* MDT_EFFECTIVE_DPI */, out uint d, out _) == 0 && d > 0 ? d : 96;
+        }
+    }
+
+    /// <summary>Convertit une taille logique (px à 100 %) en pixels physiques pour l'écran cible.</summary>
+    protected int Scale(int logical) => (int)Math.Round(logical * TargetDpi / 96.0);
 
     /// <summary>Appelé quand la fenêtre doit (re)calculer sa géométrie (affichage, DPI, écran).</summary>
     protected virtual void LayoutGeometry() { }
@@ -105,7 +128,12 @@ internal class GlassWindow : Form
         _triggerZone = triggerZone;
         _keepZone = keepZone;
         _geometryReady = true;
-        if (!_animating) Bounds = _shownState ? shown : hidden;
+        if (!_animating)
+        {
+            Bounds = _shownState ? shown : hidden;
+            // Au repos caché : fenêtre réellement invisible, pour ne pas déborder sur un autre écran.
+            Visible = _shownState;
+        }
     }
 
     // ----- cycle de vie / verre -----
@@ -172,6 +200,8 @@ internal class GlassWindow : Form
         _animating = true;
         try
         {
+            // Apparaît au point caché avant de glisser vers l'intérieur.
+            if (shown && !Visible) { Bounds = _hidden; Visible = true; }
             var from = Bounds;
             var to = shown ? _shown : _hidden;
             double dur = shown ? 200 : 140;   // DA §11 : ouverture ~0,2 s, fermeture 0,14 s
@@ -190,6 +220,8 @@ internal class GlassWindow : Form
                 Dwm.Flush();
             }
             SetWindowPos(Handle, 0, to.X, to.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            // Une fois rangé, on masque vraiment la fenêtre (ne déborde pas sur un autre écran).
+            if (!shown) Visible = false;
         }
         finally { _animating = false; }
     }
