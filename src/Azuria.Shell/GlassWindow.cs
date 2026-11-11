@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Azuria.Shell.Native;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -10,9 +11,10 @@ namespace Azuria.Shell;
 /// Fenêtre de verre d'Azuria : hôte natif sans cadre, toujours au-dessus, hors barre des tâches,
 /// avec l'Acrylic de DWM, qui affiche une page de l'UI (HTML/CSS) dans un WebView2 transparent.
 ///
-/// La fenêtre est découpée en rectangle arrondi (région) pour que le verre ne déborde pas en coins
-/// carrés. Pour l'effet « dynamic island », la fenêtre s'anime entre un état replié et un état
-/// étendu ; l'UI (CSS) montre peu ou beaucoup selon l'état, transmis par la classe <c>expanded</c>.
+/// Coins arrondis par le compositeur (DWMWA_WINDOW_CORNER_PREFERENCE) : robuste sur tout GPU et
+/// sans clignotement au redimensionnement. Pour l'effet « dynamic island », la fenêtre s'anime
+/// entre un état replié et un état étendu ; le survol est détecté en sondant la position du
+/// curseur (zone stable), ce qui évite toute boucle repli/expansion au bord de la fenêtre.
 /// </summary>
 internal class GlassWindow : Form
 {
@@ -23,18 +25,27 @@ internal class GlassWindow : Form
     private readonly WebView2 _web = new();
     private bool _blurAvailable = true;
 
-    // Géométrie (pixels physiques) : les deux états et le rayon, fixés par la classe dérivée.
+    // Géométrie (pixels physiques) : les deux états, fixés par la classe dérivée.
     private Rectangle _collapsed;
     private Rectangle _expanded;
-    private int _radiusPx = 14;
     private bool _expandedState;
+    private bool _geometryReady;
 
-    // Animation
+    // Animation de taille
     private readonly System.Windows.Forms.Timer _anim = new() { Interval = 15 };
     private readonly Stopwatch _clock = new();
     private Rectangle _animFrom, _animTo;
     private double _animDurationMs;
     private bool _animDecelerate;
+
+    // Survol (sondage du curseur) et stabilisation du DPI après affichage
+    private readonly System.Windows.Forms.Timer _hover = new() { Interval = 60 };
+    private readonly System.Windows.Forms.Timer _settle = new() { Interval = 50 };
+    private int _settleTicks;
+
+    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint hwnd);
 
     protected GlassWindow(string page)
     {
@@ -44,14 +55,20 @@ internal class GlassWindow : Form
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        // Fond noir : dans le cadre étendu par DWM, le noir devient le matériau (verre).
-        BackColor = Color.Black;
+        AutoScaleMode = AutoScaleMode.None; // on gère les tailles en pixels physiques
+        BackColor = Color.Black;            // noir = verre, dans le cadre étendu par DWM
 
         _web.Dock = DockStyle.Fill;
-        _web.DefaultBackgroundColor = Color.Transparent; // laisse passer le verre derrière l'UI
+        _web.DefaultBackgroundColor = Color.Transparent;
         Controls.Add(_web);
 
         _anim.Tick += OnAnimTick;
+        _hover.Tick += OnHoverTick;
+        _settle.Tick += (_, _) =>
+        {
+            LayoutGeometry();
+            if (++_settleTicks >= 6) { _settle.Stop(); _settleTicks = 0; }
+        };
     }
 
     protected override CreateParams CreateParams
@@ -59,28 +76,37 @@ internal class GlassWindow : Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= WS_EX_TOOLWINDOW; // hors Alt-Tab et hors barre des tâches
+            cp.ExStyle |= WS_EX_TOOLWINDOW;
             return cp;
         }
     }
 
-    /// <summary>Convertit une taille logique (px à 100 %) en pixels physiques pour cet écran.</summary>
-    protected int Scale(int logical) => (int)Math.Round(logical * DeviceDpi / 96.0);
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        LayoutGeometry();
+        _settle.Start(); // le DPI de la fenêtre n'est fiable qu'après son placement réel
+    }
 
-    /// <summary>Fixe les deux états de la fenêtre et le rayon. La fenêtre démarre repliée.</summary>
-    protected void ConfigureGeometry(Rectangle collapsed, Rectangle expanded, int radiusPx)
+    /// <summary>DPI réel de la fenêtre (WinForms.DeviceDpi reste parfois bloqué à 96).</summary>
+    protected uint MonitorDpi => IsHandleCreated && GetDpiForWindow(Handle) is var d and > 0 ? d : 96;
+
+    /// <summary>Convertit une taille logique (px à 100 %) en pixels physiques pour cet écran.</summary>
+    protected int Scale(int logical) => (int)Math.Round(logical * MonitorDpi / 96.0);
+
+    /// <summary>Appelé quand la fenêtre doit (re)calculer sa géométrie (affichage, DPI, écran).</summary>
+    protected virtual void LayoutGeometry() { }
+
+    /// <summary>Fixe les deux états de la fenêtre. La fenêtre prend l'état courant (replié au départ).</summary>
+    protected void ConfigureGeometry(Rectangle collapsed, Rectangle expanded)
     {
         _collapsed = collapsed;
         _expanded = expanded;
-        _radiusPx = radiusPx;
-        ApplyBounds(collapsed);
+        _geometryReady = true;
+        if (!_anim.Enabled) ApplyBounds(_expandedState ? expanded : collapsed);
     }
 
-    private void ApplyBounds(Rectangle r)
-    {
-        Bounds = r;
-        Shaping.RoundWindow(Handle, r.Width, r.Height, _radiusPx);
-    }
+    private void ApplyBounds(Rectangle r) => Bounds = r; // coins arrondis par DWM, pas de région
 
     // ----- cycle de vie / verre -----
 
@@ -90,6 +116,7 @@ internal class GlassWindow : Form
 
         Dwm.UseDarkMode(Handle);
         Dwm.ExtendFrameFull(Handle);
+        Dwm.SetCorner(Handle, Dwm.Corner.Round); // arrondi natif, clippe aussi le matériau DWM
         _blurAvailable = TransparencyEnabled();
         Dwm.SetAcrylic(Handle, _blurAvailable);
 
@@ -116,30 +143,41 @@ internal class GlassWindow : Form
         core.Settings.IsStatusBarEnabled = false;
         core.Settings.IsZoomControlEnabled = false;
 
-        core.WebMessageReceived += OnWebMessage;
-
         ApplyBlurClass();
         core.Navigate($"https://azuria.local/{_page}");
+
+        _hover.Start(); // le survol pilote l'expansion (voir OnHoverTick)
     }
 
-    // ----- dynamic island : survol → animation de la fenêtre -----
+    // ----- dynamic island : survol sondé → animation -----
 
-    private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    /// <summary>
+    /// Sonde la position du curseur. On s'étend si le curseur est sur la pastille repliée, et on ne
+    /// se replie que lorsqu'il quitte toute la barre étendue : la zone chaude dépend de l'état, donc
+    /// pas de boucle repli/expansion au bord.
+    /// </summary>
+    private void OnHoverTick(object? sender, EventArgs e)
     {
-        string msg = e.TryGetWebMessageAsString();
-        if (msg == "expand") AnimateTo(expanded: true);
-        else if (msg == "collapse") AnimateTo(expanded: false);
+        if (!_geometryReady) return;
+        GetCursorPos(out POINT p);
+        var cursor = new Point(p.X, p.Y);
+        Rectangle hot = _expandedState ? _expanded : _collapsed;
+        bool want = hot.Contains(cursor);
+        if (want != _expandedState) AnimateTo(want);
     }
 
     private void AnimateTo(bool expanded)
     {
-        if (_expandedState == expanded && !_anim.Enabled) return;
         _expandedState = expanded;
+
+        // Prévient l'UI (fondu des groupes gauche/droite) ; le redimensionnement, lui, est natif.
+        _ = _web.CoreWebView2?.ExecuteScriptAsync(
+            $"document.documentElement.classList.toggle('expanded', {(expanded ? "true" : "false")})");
 
         _animFrom = Bounds;
         _animTo = expanded ? _expanded : _collapsed;
-        _animDurationMs = expanded ? 180 : 140;   // DA §11 : ouverture ~0,2 s, fermeture 0,14 s
-        _animDecelerate = expanded;                // entrée en décélération, sortie en accélération
+        _animDurationMs = expanded ? 180 : 140;  // DA §11 : ouverture ~0,2 s, fermeture 0,14 s
+        _animDecelerate = expanded;
         _clock.Restart();
         _anim.Start();
     }

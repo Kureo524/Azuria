@@ -125,20 +125,9 @@
     tick();
     setInterval(tick, 1000);
 
-    // Dynamic island : on prévient le C# de l'intention de survol ; c'est lui qui redimensionne
-    // la fenêtre (le verre est une fenêtre native). On bascule aussi la classe pour le fondu.
-    const host = window.chrome?.webview;
-    let expanded = false;
-    function setExpanded(v) {
-      if (v === expanded) return;
-      expanded = v;
-      document.documentElement.classList.toggle('expanded', v);
-      host?.postMessage(v ? 'expand' : 'collapse');
-    }
-    // pointerenter/leave sur le document : au repos, seule la pastille est dans la fenêtre,
-    // donc l'entrée du curseur dans la fenêtre = survol de la pastille.
-    document.addEventListener('pointerenter', () => setExpanded(true));
-    document.addEventListener('pointerleave', () => setExpanded(false));
+    // Le dynamic island est piloté par le C# (il sonde le curseur et redimensionne la fenêtre
+    // native) : il ajoute/retire la classe « expanded » sur <html>, qui déclenche le fondu des
+    // groupes gauche/droite. Rien à faire ici côté survol.
   </script>
 </body>
 </html>

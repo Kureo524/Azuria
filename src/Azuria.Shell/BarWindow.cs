@@ -3,12 +3,11 @@ namespace Azuria.Shell;
 /// <summary>
 /// La barre d'Azuria, en « dynamic island » : au repos, une petite pastille centrée en haut qui
 /// ne montre que l'heure ; au survol, elle s'agrandit pour révéler les bureaux (gauche) et la zone
-/// d'état (droite). (Écart assumé avec la DA §9/§11, à acter — voir la PR.)
+/// d'état (droite). (Écart assumé avec la DA §9/§11, acté — voir docs/contexte.md §3.)
 /// </summary>
 internal sealed class BarWindow : GlassWindow
 {
     private const int MarginTopLogical = 12; // DA §4 : marge avec le bord de l'écran
-    private const int RadiusLogical = 14;    // DA §8 : rayon de la barre
 
     // États (tailles logiques). Replié : juste l'heure. Étendu : barre complète centrée.
     private const int CollapsedWLogical = 136;
@@ -18,21 +17,16 @@ internal sealed class BarWindow : GlassWindow
 
     public BarWindow() : base("bar.html") { }
 
-    protected override void OnShown(EventArgs e)
-    {
-        base.OnShown(e);
-        ApplyGeometry();
-    }
-
     protected override void OnDpiChanged(DpiChangedEventArgs e)
     {
         base.OnDpiChanged(e);
-        ApplyGeometry();
+        LayoutGeometry();
     }
 
-    private void ApplyGeometry()
+    protected override void LayoutGeometry()
     {
-        var work = Screen.FromHandle(Handle).WorkingArea; // pixels physiques (DPI par moniteur)
+        if (!IsHandleCreated) return;
+        var work = Screen.FromHandle(Handle).WorkingArea; // pixels physiques
         int centerX = work.Left + work.Width / 2;
         int top = work.Top + Scale(MarginTopLogical);
 
@@ -44,7 +38,6 @@ internal sealed class BarWindow : GlassWindow
 
         ConfigureGeometry(
             collapsed: Centered(CollapsedWLogical, CollapsedHLogical),
-            expanded: Centered(ExpandedWLogical, ExpandedHLogical),
-            radiusPx: Scale(RadiusLogical));
+            expanded: Centered(ExpandedWLogical, ExpandedHLogical));
     }
 }
