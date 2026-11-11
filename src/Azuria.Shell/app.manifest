@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="0.1.0.0" name="Azuria.Shell" />
+
+  <!-- La conscience du DPI (PerMonitorV2) est configurée via la propriété de projet
+       ApplicationHighDpiMode, appliquée tôt par ApplicationConfiguration.Initialize(). -->
+
+  <!-- Windows 11 (et 10) : nécessaire pour que les API récentes se comportent correctement. -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" /><!-- Windows 10 / 11 -->
+    </application>
+  </compatibility>
+</assembly>
