@@ -282,16 +282,25 @@ Azuria dessine son shell ; les fenêtres des autres applications sont dessinées
 de s'injecter dans d'autres processus (voir `CLAUDE.md`). **Ces points sont des hypothèses tant qu'un prototype
 ne les a pas confirmés** ; on met ce tableau à jour à chaque résultat.
 
-| Cible                                               | Attendu sur Windows 11                                              |
-| --------------------------------------------------- | ------------------------------------------------------------------- |
-| Verre flouté sur ce qui est derrière, rayon libre   | Possible pour nos fenêtres ; **premier prototype à faire**          |
-| Flou fluide pendant un glissé de panneau            | À mesurer, y compris sur carte graphique intégrée                   |
-| Bordure d'accent sur la fenêtre active              | Possible : Windows laisse choisir la couleur de bordure             |
-| Rayon des fenêtres des applications                 | Imposé par Windows (environ 8) ; on ne le change pas                |
-| Fenêtres d'applications translucides et floutées    | Non : seul le shell est en verre                                    |
-| Pavage, écarts, bureaux                             | Possible, par un gestionnaire de fenêtres en espace utilisateur     |
-| Animations d'ouverture et de fermeture des fenêtres | Celles de Windows                                                   |
-| Écran de verrouillage                               | Celui de Windows                                                    |
+La colonne « Constaté » vient du prototype `prototypes/verre-floute` (11 novembre 2026). Machine d'essai :
+Windows 11 26H2 (build 26300), AMD Radeon RX 6600, **avec un adaptateur d'affichage virtuel Parsec**. Ce dernier
+point est important : le flou des fenêtres d'autres applications ne s'est **pas** reproduit sur cette machine (ni
+par notre fenêtre, ni par l'Acrylic du menu Démarrer de Windows lui-même), ce qui pointe vers l'affichage virtuel
+plutôt qu'une limite de Windows. À **re-vérifier devant l'écran physique** (cf. `docs/contexte.md` §6).
+
+| Cible                                               | Attendu sur Windows 11                                              | Constaté (prototype, 11 nov. 2026)                                                                 |
+| --------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Verre flouté sur le **fond d'écran**, rayon libre   | Possible pour nos fenêtres ; **premier prototype à faire**          | **Oui.** Acrylic DWM floute le fond d'écran ; rayon libre 14→30 via `SetWindowRgn` (coins crénelés, non lissés) |
+| Verre flouté sur les **fenêtres d'autres applis derrière** | (implicite dans la DA §6)                                    | **Non reproduit ici** (Acrylic, blur-behind, HostBackdrop : aucun). Suspect Parsec → à juger sur l'écran physique |
+| Flou fluide pendant un glissé de panneau            | À mesurer, y compris sur carte graphique intégrée                   | **Fluide** sur RX 6600 : ~8 ms/image, 0 image > 20 ms (glissé 100 px/0,2 s et 300 px/1 s). iGPU non testable ici |
+| Bordure d'accent sur la fenêtre active              | Possible : Windows laisse choisir la couleur de bordure             | **Non** pour une fenêtre d'une **autre** appli : `DWMWA_BORDER_COLOR` renvoie S_OK mais est ignoré. OK pour nos propres fenêtres |
+| Rayon des fenêtres des applications                 | Imposé par Windows (environ 8) ; on ne le change pas                | Non testé (hors prototype)                                                                          |
+| Fenêtres d'applications translucides et floutées    | Non : seul le shell est en verre                                    | Non testé (hors prototype)                                                                          |
+| Fenêtre sans cadre, toujours au-dessus, hors barre des tâches, floutée | (découlait de la DA §9)                          | **Oui.** `WS_POPUP` + topmost + tool-window + `DwmExtendFrameIntoClientArea(-1)` : l'Acrylic s'applique, pas de barre de titre |
+| Repli sans flou (transparence Windows coupée)       | Verre → `--solid` (DA §6)                                           | **Oui.** La fenêtre détecte la coupure (`WM_SETTINGCHANGE`) et passe en `--solid` opaque, rayon conservé |
+| Pavage, écarts, bureaux                             | Possible, par un gestionnaire de fenêtres en espace utilisateur     | Non testé (hors prototype)                                                                          |
+| Animations d'ouverture et de fermeture des fenêtres | Celles de Windows                                                   | Non testé (hors prototype)                                                                          |
+| Écran de verrouillage                               | Celui de Windows                                                    | Non testé (hors prototype)                                                                          |
 
 ## 14. Checklist avant de livrer une UI
 
