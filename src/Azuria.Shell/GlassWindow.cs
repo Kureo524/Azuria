@@ -21,8 +21,9 @@ internal static class ShellMetrics
 
 /// <summary>
 /// Fenêtre de verre d'Azuria : hôte natif sans cadre, toujours au-dessus, hors barre des tâches, qui
-/// affiche une page de l'UI (HTML/CSS) dans un WebView2 transparent, posé sur le verre composé par
-/// <see cref="GlassSurface"/> (flou + voile à la forme exacte du tiroir).
+/// affiche une page de l'UI (HTML/CSS) dans un WebView2 transparent. Son verre (flou + voile à la
+/// forme exacte du tiroir) est dessiné dessous par la surface de l'écran (<see cref="ScreenSurface"/>),
+/// d'un seul tenant avec le cadre ; la fenêtre ne garde que sa page et ses clics.
 ///
 /// Les panneaux sont des « tiroirs » qui sortent du cadre de l'écran (organisation inspirée de
 /// Caelestia, entièrement réécrite ici) : collés au bord intérieur du cadre, avec des congés concaves
@@ -40,7 +41,6 @@ internal class GlassWindow : Form
 
     private readonly string _page;
     private readonly WebView2 _web = new();
-    private GlassSurface? _glass;
     private bool _blurAvailable = true;
 
     // Géométrie (pixels physiques), fixée par la classe dérivée.
@@ -60,10 +60,14 @@ internal class GlassWindow : Form
     [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int cx, int cy, uint flags);
-    private const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
+    private const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
+    private static readonly nint HWND_TOPMOST = -1;
 
     /// <summary>Message envoyé par la page (<c>chrome.webview.postMessage</c>), sauf « close » qui range le tiroir.</summary>
     public event Action<string>? MessageReceived;
+
+    /// <summary>Le tiroir a bougé (glissé, mise en place) : le verre de son écran doit suivre.</summary>
+    public event Action<GlassWindow>? Moved;
 
     /// <summary>Le tiroir commence à sortir (true) ou vient de finir de rentrer (false).</summary>
     public event Action<GlassWindow, bool>? PresenceChanged;
@@ -147,7 +151,30 @@ internal class GlassWindow : Form
             Bounds = _shownState ? shown : hidden;
             // Au repos caché : fenêtre réellement invisible (ne déborde sur aucun autre écran).
             Visible = _shownState;
+            Track();
         }
+    }
+
+    /// <summary>Forme du verre pour la taille actuelle (coordonnées de la fenêtre).</summary>
+    public GlassShape Shape
+    {
+        get
+        {
+            var s = new GlassShape();
+            if (Width > 0 && Height > 0) BuildShape(s, Width, Height);
+            return s;
+        }
+    }
+
+    // Après chaque déplacement : clics limités à la forme, rognée au bord intérieur du cadre (le
+    // tiroir en sort), et le verre de l'écran suit (ScreenSurface).
+    private void Track()
+    {
+        if (!IsHandleCreated) return;
+        var work = WorkArea;
+        ShapeRegion.Apply(Handle, Shape,
+            new Rectangle(work.X - Left, work.Y - Top, work.Width, work.Height));
+        Moved?.Invoke(this);
     }
 
     /// <summary>Révèle le tiroir (sur commande).</summary>
@@ -170,7 +197,7 @@ internal class GlassWindow : Form
         {
             var cp = base.CreateParams;
             cp.ExStyle |= WS_EX_TOOLWINDOW;                 // hors Alt-Tab et hors barre des tâches
-            cp.ExStyle |= WS_EX_NOREDIRECTIONBITMAP;        // seuls le verre composé et la page s'affichent
+            cp.ExStyle |= WS_EX_NOREDIRECTIONBITMAP;        // seule la page s'affiche (le verre est dessous)
             if (NoActivate) cp.ExStyle |= WS_EX_NOACTIVATE; // ne vole pas le focus
             return cp;
         }
@@ -178,7 +205,7 @@ internal class GlassWindow : Form
 
     protected override bool ShowWithoutActivation => NoActivate;
 
-    // Rien à peindre : le fond est le verre composé (et la fenêtre n'a pas de surface GDI).
+    // Rien à peindre : la fenêtre n'a pas de surface GDI, le verre est dessous.
     protected override void OnPaintBackground(PaintEventArgs e) { }
 
     protected override void OnShown(EventArgs e)
@@ -188,20 +215,6 @@ internal class GlassWindow : Form
         _settle.Start(); // re-calcule quelques fois le temps que tout se stabilise
     }
 
-    protected override void OnSizeChanged(EventArgs e)
-    {
-        base.OnSizeChanged(e);
-        ApplyShape(); // la forme ne dépend que de la taille : elle ne bouge pas pendant un glissé
-    }
-
-    private void ApplyShape()
-    {
-        if (_glass is null || Width <= 0 || Height <= 0) return;
-        var s = new GlassShape();
-        BuildShape(s, Width, Height);
-        _glass.SetShape(s, Width, Height);
-    }
-
     protected override async void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
@@ -209,8 +222,6 @@ internal class GlassWindow : Form
         Dwm.UseDarkMode(Handle);
         Dwm.SetCorner(Handle, Dwm.Corner.DoNotRound); // la forme est la nôtre
         _blurAvailable = TransparencyEnabled();
-        _glass = new GlassSurface(Handle) { Blur = _blurAvailable };
-        ApplyShape();
 
         await InitWebAsync();
     }
@@ -284,8 +295,15 @@ internal class GlassWindow : Form
         try
         {
             // Apparaît au point caché avant de glisser vers l'intérieur.
-            if (shown && !Visible) { Bounds = _hidden; Visible = true; }
-            if (shown) PresenceChanged?.Invoke(this, true); // le cadre se range au-dessus, libère ses coins
+            if (shown && !Visible)
+            {
+                Bounds = _hidden;
+                Track();        // région vide : rien ne dépasse du cadre
+                Visible = true;
+                // Au-dessus du verre de l'écran (sa page se pose sur son propre verre).
+                SetWindowPos(Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
+            if (shown) PresenceChanged?.Invoke(this, true); // un tiroir latéral libère les coins du cadre
             var from = Bounds;
             var to = shown ? _shown : _hidden;
             double dur = shown ? 200 : 140;   // DA §11 : ouverture ~0,2 s, fermeture 0,14 s
@@ -299,15 +317,14 @@ internal class GlassWindow : Form
                                  : Bezier(0.3, 0, 1, 1, p);  // sortie : accélération
                 SetWindowPos(Handle, 0, Lerp(from.X, to.X, e), Lerp(from.Y, to.Y, e), 0, 0,
                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                Track();
                 Dwm.Flush();
             }
             SetWindowPos(Handle, 0, to.X, to.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
             // Une fois rangée, la fenêtre est vraiment masquée.
-            if (!shown)
-            {
-                Visible = false;
-                PresenceChanged?.Invoke(this, false);
-            }
+            if (!shown) Visible = false;
+            Track();
+            if (!shown) PresenceChanged?.Invoke(this, false);
         }
         finally { _animating = false; }
 
@@ -362,7 +379,6 @@ internal class GlassWindow : Form
                 if (now != _blurAvailable)
                 {
                     _blurAvailable = now;
-                    if (_glass is not null) _glass.Blur = now;
                     ApplyBlurClass();
                 }
                 break;

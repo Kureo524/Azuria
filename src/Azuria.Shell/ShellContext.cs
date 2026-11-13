@@ -6,21 +6,22 @@ namespace Azuria.Shell;
 /// Le contexte de l'application : tient toutes les fenêtres du shell et garde la boucle de
 /// messages vivante tant qu'elles existent. Organisation (inspirée de Caelestia, réécrite) : un cadre
 /// permanent autour de chaque écran, d'où sortent la barre verticale à gauche, le tableau de bord en
-/// haut, le lanceur en bas et le panneau à droite.
+/// haut, le lanceur en bas et le panneau à droite. Le verre de tout ça est dessiné par la surface de
+/// chaque écran (<see cref="ScreenSurface"/>) ; les tiroirs n'y posent que leur page.
 /// </summary>
 internal sealed class ShellContext : ApplicationContext
 {
-    private readonly List<Form> _windows = new();
-    private readonly List<ScreenFrame> _frames = new();
+    private readonly List<GlassWindow> _drawers = new();
+    private readonly List<ScreenSurface> _surfaces = new();
 
     public ShellContext()
     {
         // Le cadre d'abord : il réserve sa place, les tiroirs se calent ensuite sur la zone restante.
-        BuildFrames();
+        BuildSurfaces();
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
-            foreach (var f in _frames) f.ReleaseReservation(); // rend la place réservée
+            foreach (var s in _surfaces) s.ReleaseReservation(); // rend la place réservée
         };
 
         var bar = new SidePanelWindow("left.html", right: false, widthLogical: 56);       // barre principale
@@ -36,64 +37,64 @@ internal sealed class ShellContext : ApplicationContext
 
         foreach (var w in new GlassWindow[] { bar, dashboard, sidebar, launcher })
         {
+            w.Moved += OnDrawerMoved;
             w.PresenceChanged += OnDrawerPresence;
-            Add(w);
+            w.FormClosed += (_, _) =>
+            {
+                _drawers.Remove(w);
+                if (_drawers.Count == 0)
+                {
+                    DisposeSurfaces();
+                    ExitThread();
+                }
+            };
+            _drawers.Add(w);
         }
-        foreach (var w in _windows) w.Show();
-        foreach (var f in _frames) f.BringToTop();
+        foreach (var w in _drawers) w.Show();
     }
 
-    // Un tiroir sort : le cadre de son écran repasse au-dessus (le tiroir sort de dessous), et un
-    // tiroir latéral libère les coins du cadre de son côté (ses propres congés les remplacent).
+    // Le verre d'un tiroir est dessiné par la surface de son écran, et seulement elle.
+    private void OnDrawerMoved(GlassWindow drawer)
+    {
+        var screen = drawer.AnchorScreen.DeviceName;
+        foreach (var s in _surfaces)
+            s.Track(drawer, drawer.Visible && s.Screen.DeviceName == screen);
+    }
+
+    // Un tiroir latéral occupe son côté : ses congés remplacent les coins du cadre de ce côté.
     private void OnDrawerPresence(GlassWindow drawer, bool present)
     {
-        var frame = FrameOf(drawer.AnchorScreen);
-        if (frame is null) return;
-        if (drawer.Edge is DrawerEdge.Left or DrawerEdge.Right) frame.SetSideOccupied(drawer.Edge, present);
-        if (present) frame.BringToTop();
+        if (drawer.Edge is not (DrawerEdge.Left or DrawerEdge.Right)) return;
+        SurfaceOf(drawer.AnchorScreen)?.SetSideOccupied(drawer.Edge, present);
     }
 
-    private ScreenFrame? FrameOf(Screen s) => _frames.FirstOrDefault(f => f.Screen.DeviceName == s.DeviceName);
+    private ScreenSurface? SurfaceOf(Screen s) => _surfaces.FirstOrDefault(f => f.Screen.DeviceName == s.DeviceName);
 
-    private void BuildFrames()
+    private void BuildSurfaces()
     {
-        foreach (var s in Screen.AllScreens)
+        foreach (var screen in Screen.AllScreens)
         {
-            var f = new ScreenFrame(s);
-            f.FullScreenChanged += (_, _) => UpdateSuspension();
-            f.Start();
-            _frames.Add(f);
+            var s = new ScreenSurface(screen);
+            s.FullScreenChanged += (_, _) => UpdateSuspension();
+            s.Start();
+            _surfaces.Add(s);
         }
     }
 
     // Une appli en plein écran (un jeu) sur n'importe quel écran : aucun tiroir ne s'ouvre.
     private void UpdateSuspension() =>
-        GlassWindow.Suspended = _frames.Any(f => f.IsFullScreen);
+        GlassWindow.Suspended = _surfaces.Any(s => s.IsFullScreen);
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
-        DisposeFrames();
-        BuildFrames();
-        foreach (var f in _frames) f.BringToTop();
+        DisposeSurfaces();
+        BuildSurfaces();
+        foreach (var d in _drawers) OnDrawerMoved(d);
     }
 
-    private void DisposeFrames()
+    private void DisposeSurfaces()
     {
-        foreach (var f in _frames) f.Dispose();
-        _frames.Clear();
-    }
-
-    private void Add(Form w)
-    {
-        w.FormClosed += (_, _) =>
-        {
-            _windows.Remove(w);
-            if (_windows.Count == 0)
-            {
-                DisposeFrames();
-                ExitThread();
-            }
-        };
-        _windows.Add(w);
+        foreach (var s in _surfaces) s.Dispose();
+        _surfaces.Clear();
     }
 }
