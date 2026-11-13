@@ -176,10 +176,15 @@ Organisation inspirée de Caelestia (les idées, jamais son code ni ses fichiers
 de cette DA. Les deux écrans forment **une seule zone** : chaque panneau s'attache au bord extérieur de
 l'ensemble des écrans (ou à l'écran du curseur pour le haut et le bas).
 
-**Tiroirs** — tout panneau est un **tiroir collé à un bord d'écran**, qui semble en sortir : bord collé droit,
-**congés concaves** là où il rejoint le bord, coins arrondis côté libre. Le verre plein suit cette forme (voile
-`--surface` sur le flou), avec un trait `--border-strong` sur les bords libres seulement. Un tiroir ne fait que
-**glisser** depuis son bord (section 11) : sa forme et son contenu ne bougent pas. Masqué au repos.
+**Cadre** — un **contour permanent** de verre, épaisseur 8, entoure la zone de travail de chaque écran (au-dessus
+de la barre des tâches), coins intérieurs arrondis à 18. Sa place est réservée : les fenêtres agrandies s'arrêtent
+à son bord intérieur. Il se masque quand une appli passe en plein écran (un jeu), et aucun tiroir ne s'ouvre alors.
+
+**Tiroirs** — tout panneau est un **tiroir qui sort du cadre** : bord collé droit, **congés concaves** (rayon 18)
+là où il rejoint le cadre, coins arrondis côté libre. Cadre et tiroirs sont un même verre (voile `--surface` sur
+le flou), d'un seul tenant, sans trait de contour. Un tiroir latéral pleine hauteur remplace les coins du cadre de
+son côté par ses propres congés. Un tiroir ne fait que **glisser** depuis son bord, de dessous le cadre
+(section 11) : sa forme et son contenu ne bougent pas. Masqué au repos.
 
 **Barre** — verticale, collée au bord gauche, pleine hauteur, largeur 56. Révélée quand le curseur touche le bord
 gauche. De haut en bas :
@@ -302,8 +307,8 @@ plutôt qu'une limite de Windows. À **re-vérifier devant l'écran physique** (
 
 | Cible                                               | Attendu sur Windows 11                                              | Constaté (prototype, 11 nov. 2026)                                                                 |
 | --------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Verre flouté sur le **fond d'écran**, rayon libre   | Possible pour nos fenêtres ; **premier prototype à faire**          | **Oui.** Acrylic DWM floute le fond d'écran ; rayon libre 14→30 via `SetWindowRgn` (coins crénelés, non lissés) |
-| Verre flouté sur les **fenêtres d'autres applis derrière** | (implicite dans la DA §6)                                    | **Non reproduit ici** (Acrylic, blur-behind, HostBackdrop : aucun). Suspect Parsec → à juger sur l'écran physique |
+| Verre flouté sur le **fond d'écran**, rayon libre   | Possible pour nos fenêtres ; **premier prototype à faire**          | **Oui.** Acrylic DWM floute le fond d'écran ; rayon libre 14→30 via `SetWindowRgn` (coins crénelés, non lissés). **13 nov. :** dans le shell, l'Acrylic DWM ignore la région (congés remplis en rectangle) et devient gris plat sur une fenêtre jamais active. **Solution retenue :** flou composé par nous (`CreateHostBackdropBrush` + `DWMWA_USE_HOSTBACKDROPBRUSH`), découpé par une géométrie Direct2D (`IGeometrySource2DInterop`) : forme libre, congés concaves, bords lissés |
+| Verre flouté sur les **fenêtres d'autres applis derrière** | (implicite dans la DA §6)                                    | **Non reproduit ici** (Acrylic, blur-behind, HostBackdrop : aucun). Suspect Parsec → à juger sur l'écran physique. **13 nov., portable sans Parsec** (Radeon intégrée + RTX 3060) : **Oui**, une autre appli derrière la barre est floutée |
 | Flou fluide pendant un glissé de panneau            | À mesurer, y compris sur carte graphique intégrée                   | **Fluide** sur RX 6600 : ~8 ms/image, 0 image > 20 ms (glissé 100 px/0,2 s et 300 px/1 s). iGPU non testable ici |
 | Bordure d'accent sur la fenêtre active              | Possible : Windows laisse choisir la couleur de bordure             | **Non** pour une fenêtre d'une **autre** appli : `DWMWA_BORDER_COLOR` renvoie S_OK mais est ignoré. OK pour nos propres fenêtres |
 | Rayon des fenêtres des applications                 | Imposé par Windows (environ 8) ; on ne le change pas                | Non testé (hors prototype)                                                                          |
