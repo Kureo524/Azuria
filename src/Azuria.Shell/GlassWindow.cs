@@ -7,25 +7,40 @@ using Microsoft.Win32;
 
 namespace Azuria.Shell;
 
+/// <summary>Bord d'écran auquel un tiroir est collé (None = tiroir flottant).</summary>
+internal enum DrawerEdge { None, Top, Bottom, Left, Right }
+
+/// <summary>Mesures communes du shell (px logiques, DA §8–9).</summary>
+internal static class ShellMetrics
+{
+    /// <summary>Épaisseur du cadre permanent autour de la zone de travail.</summary>
+    public const int Frame = 8;
+    /// <summary>Rayon des coins intérieurs du cadre et des congés où un tiroir le rejoint.</summary>
+    public const int Fillet = 18;
+}
+
 /// <summary>
-/// Fenêtre de verre d'Azuria : hôte natif sans cadre, toujours au-dessus, hors barre des tâches,
-/// avec l'Acrylic de DWM, qui affiche une page de l'UI (HTML/CSS) dans un WebView2 transparent.
+/// Fenêtre de verre d'Azuria : hôte natif sans cadre, toujours au-dessus, hors barre des tâches, qui
+/// affiche une page de l'UI (HTML/CSS) dans un WebView2 transparent, posé sur le verre composé par
+/// <see cref="GlassSurface"/> (flou + voile à la forme exacte du tiroir).
 ///
-/// Les panneaux sont des « tiroirs » attachés à un bord d'écran (organisation inspirée de Caelestia,
-/// entièrement réécrite ici) : la fenêtre est découpée à la forme du tiroir — congés concaves là où
-/// il rejoint le bord, coins arrondis côté libre — et la page dessine la même forme (web/drawer.js).
-/// Un tiroir se révèle en glissant depuis son bord (seule la position bouge, cadencée par DWM),
-/// soit au survol du bord (sondage du curseur), soit sur commande (<see cref="Reveal"/>).
+/// Les panneaux sont des « tiroirs » qui sortent du cadre de l'écran (organisation inspirée de
+/// Caelestia, entièrement réécrite ici) : collés au bord intérieur du cadre, avec des congés concaves
+/// là où ils le rejoignent, coins arrondis côté libre. Un tiroir se révèle en glissant depuis son
+/// bord (seule la position bouge, cadencée par DWM), au survol du bord ou sur commande.
 /// </summary>
 internal class GlassWindow : Form
 {
     private const int WM_SETTINGCHANGE = 0x001A;
     private const int WM_DPICHANGED = 0x02E0;
+    private const int SPI_SETWORKAREA = 0x002F;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_NOACTIVATE = 0x08000000;
+    private const int WS_EX_NOREDIRECTIONBITMAP = 0x00200000;
 
     private readonly string _page;
     private readonly WebView2 _web = new();
+    private GlassSurface? _glass;
     private bool _blurAvailable = true;
 
     // Géométrie (pixels physiques), fixée par la classe dérivée.
@@ -44,13 +59,20 @@ internal class GlassWindow : Form
 
     [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
-    [DllImport("user32.dll")] private static extern nint MonitorFromPoint(POINT pt, uint flags);
-    [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(nint hmon, int type, out uint x, out uint y);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int cx, int cy, uint flags);
     private const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
 
     /// <summary>Message envoyé par la page (<c>chrome.webview.postMessage</c>), sauf « close » qui range le tiroir.</summary>
     public event Action<string>? MessageReceived;
+
+    /// <summary>Le tiroir commence à sortir (true) ou vient de finir de rentrer (false).</summary>
+    public event Action<GlassWindow, bool>? PresenceChanged;
+
+    /// <summary>
+    /// Vrai quand une appli est en plein écran (jeu…) : aucun tiroir ne s'ouvre au survol, et ceux qui
+    /// sont ouverts se rangent. Azuria ne dessine jamais par-dessus un jeu (CLAUDE.md).
+    /// </summary>
+    public static bool Suspended { get; set; }
 
     protected GlassWindow(string page)
     {
@@ -61,7 +83,6 @@ internal class GlassWindow : Form
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
         AutoScaleMode = AutoScaleMode.None; // on gère les tailles en pixels physiques
-        BackColor = Color.Black;            // noir = verre, dans le cadre étendu par DWM
 
         _web.Dock = DockStyle.Fill;         // taille de fenêtre constante → pas de re-layout
         _web.DefaultBackgroundColor = Color.Transparent;
@@ -78,13 +99,10 @@ internal class GlassWindow : Form
     // ----- ce que les tiroirs dérivés peuvent régler -----
 
     /// <summary>Écran d'ancrage (par défaut l'écran principal).</summary>
-    protected virtual Screen AnchorScreen => Screen.PrimaryScreen ?? Screen.AllScreens[0];
+    public virtual Screen AnchorScreen => Screen.PrimaryScreen ?? Screen.AllScreens[0];
 
-    /// <summary>Forme de tiroir (null = rectangle aux coins arrondis par Windows).</summary>
-    protected virtual DrawerEdge? Shape => null;
-
-    /// <summary>Rayon des coins et des congés du tiroir, en px logiques.</summary>
-    protected virtual int ShapeRadiusLogical => 14;
+    /// <summary>Bord du cadre d'où sort le tiroir.</summary>
+    public virtual DrawerEdge Edge => DrawerEdge.None;
 
     /// <summary>Ne vole pas le focus (vrai pour les barres/panneaux, faux pour le lanceur où l'on tape).</summary>
     protected virtual bool NoActivate => true;
@@ -98,27 +116,20 @@ internal class GlassWindow : Form
     /// <summary>Appelé juste avant une révélation au survol, avec la position du curseur.</summary>
     protected virtual void PrepareReveal(Point cursor) { }
 
-    protected bool IsShown => _shownState;
+    /// <summary>Forme du verre pour une fenêtre de <paramref name="w"/>×<paramref name="h"/> px.</summary>
+    protected virtual void BuildShape(GlassShape s, int w, int h) =>
+        s.Body(0, 0, w, h, Scale(ShellMetrics.Fillet), true, true, true, true);
 
-    protected Rectangle WorkArea => AnchorScreen.WorkingArea;
+    /// <summary>Marges (px logiques) entre la fenêtre et la zone utile de la page : les congés.</summary>
+    protected virtual Padding ContentInsets => Padding.Empty;
 
-    /// <summary>
-    /// DPI de l'écran d'ancrage, lu sur le moniteur (pas sur la fenêtre) : fiable même quand la
-    /// fenêtre est masquée ou pas encore dessus. Nécessite PerMonitorV2 (forcé dans Program).
-    /// </summary>
-    protected uint TargetDpi
-    {
-        get
-        {
-            var b = AnchorScreen.Bounds;
-            var pt = new POINT { X = b.Left + b.Width / 2, Y = b.Top + b.Height / 2 };
-            nint mon = MonitorFromPoint(pt, 2 /* MONITOR_DEFAULTTONEAREST */);
-            return GetDpiForMonitor(mon, 0 /* MDT_EFFECTIVE_DPI */, out uint d, out _) == 0 && d > 0 ? d : 96;
-        }
-    }
+    public bool IsShown => _shownState;
+
+    /// <summary>Zone de travail de l'écran d'ancrage : intérieur du cadre, hors barre des tâches.</summary>
+    protected Rectangle WorkArea => Monitors.WorkArea(AnchorScreen);
 
     /// <summary>Convertit une taille logique (px à 100 %) en pixels physiques pour l'écran d'ancrage.</summary>
-    protected int Scale(int logical) => (int)Math.Round(logical * TargetDpi / 96.0);
+    protected int Scale(int logical) => Monitors.Scale(AnchorScreen, logical);
 
     /// <summary>
     /// Configure la révélation par glissement. <paramref name="triggerZone"/> : où amener le curseur
@@ -142,7 +153,7 @@ internal class GlassWindow : Form
     /// <summary>Révèle le tiroir (sur commande).</summary>
     public void Reveal()
     {
-        if (_geometryReady && !_animating && !_shownState) Slide(true);
+        if (_geometryReady && !_animating && !_shownState && !Suspended) Slide(true);
     }
 
     /// <summary>Range le tiroir (sur commande).</summary>
@@ -159,12 +170,16 @@ internal class GlassWindow : Form
         {
             var cp = base.CreateParams;
             cp.ExStyle |= WS_EX_TOOLWINDOW;                 // hors Alt-Tab et hors barre des tâches
+            cp.ExStyle |= WS_EX_NOREDIRECTIONBITMAP;        // seuls le verre composé et la page s'affichent
             if (NoActivate) cp.ExStyle |= WS_EX_NOACTIVATE; // ne vole pas le focus
             return cp;
         }
     }
 
     protected override bool ShowWithoutActivation => NoActivate;
+
+    // Rien à peindre : le fond est le verre composé (et la fenêtre n'a pas de surface GDI).
+    protected override void OnPaintBackground(PaintEventArgs e) { }
 
     protected override void OnShown(EventArgs e)
     {
@@ -181,8 +196,10 @@ internal class GlassWindow : Form
 
     private void ApplyShape()
     {
-        if (IsHandleCreated && Shape is DrawerEdge edge)
-            Shaping.ApplyDrawer(Handle, edge, Width, Height, Scale(ShapeRadiusLogical));
+        if (_glass is null || Width <= 0 || Height <= 0) return;
+        var s = new GlassShape();
+        BuildShape(s, Width, Height);
+        _glass.SetShape(s, Width, Height);
     }
 
     protected override async void OnHandleCreated(EventArgs e)
@@ -190,11 +207,9 @@ internal class GlassWindow : Form
         base.OnHandleCreated(e);
 
         Dwm.UseDarkMode(Handle);
-        Dwm.ExtendFrameFull(Handle);
-        // Un tiroir a sa propre forme (région) : pas d'arrondi Windows par-dessus.
-        Dwm.SetCorner(Handle, Shape is null ? Dwm.Corner.Round : Dwm.Corner.DoNotRound);
+        Dwm.SetCorner(Handle, Dwm.Corner.DoNotRound); // la forme est la nôtre
         _blurAvailable = TransparencyEnabled();
-        Dwm.SetAcrylic(Handle, _blurAvailable);
+        _glass = new GlassSurface(Handle) { Blur = _blurAvailable };
         ApplyShape();
 
         await InitWebAsync();
@@ -229,10 +244,9 @@ internal class GlassWindow : Form
         };
 
         ApplyBlurClass();
-        // La page reçoit la forme du tiroir pour la dessiner à l'identique (drawer.js).
-        string query = Shape is DrawerEdge edge
-            ? $"?edge={edge.ToString().ToLowerInvariant()}&r={ShapeRadiusLogical}"
-            : "";
+        // La page reçoit la zone utile (hors congés) en px CSS (drawer.js).
+        var i = ContentInsets;
+        string query = $"?l={i.Left}&t={i.Top}&r={i.Right}&b={i.Bottom}";
         core.Navigate($"https://azuria.local/{_page}{query}");
 
         if (HoverDriven) _hover.Start();
@@ -243,6 +257,11 @@ internal class GlassWindow : Form
     private void OnHoverTick(object? sender, EventArgs e)
     {
         if (!_geometryReady || _animating) return;
+        if (Suspended)
+        {
+            if (_shownState) Slide(false);
+            return;
+        }
         GetCursorPos(out POINT p);
         var cursor = new Point(p.X, p.Y);
         Rectangle hot = _shownState ? _keepZone : _triggerZone;
@@ -266,6 +285,7 @@ internal class GlassWindow : Form
         {
             // Apparaît au point caché avant de glisser vers l'intérieur.
             if (shown && !Visible) { Bounds = _hidden; Visible = true; }
+            if (shown) PresenceChanged?.Invoke(this, true); // le cadre se range au-dessus, libère ses coins
             var from = Bounds;
             var to = shown ? _shown : _hidden;
             double dur = shown ? 200 : 140;   // DA §11 : ouverture ~0,2 s, fermeture 0,14 s
@@ -283,7 +303,11 @@ internal class GlassWindow : Form
             }
             SetWindowPos(Handle, 0, to.X, to.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
             // Une fois rangée, la fenêtre est vraiment masquée.
-            if (!shown) Visible = false;
+            if (!shown)
+            {
+                Visible = false;
+                PresenceChanged?.Invoke(this, false);
+            }
         }
         finally { _animating = false; }
 
@@ -332,11 +356,13 @@ internal class GlassWindow : Form
                 return;
 
             case WM_SETTINGCHANGE:
+                // Zone de travail changée (cadre réservé, barre des tâches déplacée…).
+                if (m.WParam == SPI_SETWORKAREA && _geometryReady && !_animating) LayoutGeometry();
                 bool now = TransparencyEnabled();
                 if (now != _blurAvailable)
                 {
                     _blurAvailable = now;
-                    Dwm.SetAcrylic(Handle, now);
+                    if (_glass is not null) _glass.Blur = now;
                     ApplyBlurClass();
                 }
                 break;
@@ -354,7 +380,7 @@ internal class GlassWindow : Form
         _ = core.ExecuteScriptAsync(js);
     }
 
-    private static bool TransparencyEnabled()
+    internal static bool TransparencyEnabled()
     {
         try
         {
