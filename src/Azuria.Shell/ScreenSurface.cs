@@ -22,6 +22,7 @@ internal sealed class ScreenSurface : IDisposable
     private readonly Dictionary<DrawerEdge, AppBarHost> _bars = new();
     private readonly Dictionary<GlassWindow, (GlassLayer Layer, Size Size)> _drawers = new();
     private readonly System.Windows.Forms.Timer _debounce = new() { Interval = 300 };
+    private readonly System.Windows.Forms.Timer _relayout = new() { Interval = 100 };
     private GlassSurface? _glass;
     private GlassLayer? _frame;
     private Rectangle _outer;  // le cadre, bord extérieur (écran, hors barre des tâches)
@@ -34,6 +35,11 @@ internal sealed class ScreenSurface : IDisposable
     /// <summary>Une appli passe en plein écran sur cet écran (true) ou le quitte (false).</summary>
     public event Action<ScreenSurface, bool>? FullScreenChanged;
 
+    /// <summary>Windows demande la fermeture (taskkill, fin de session) : Azuria doit quitter proprement.</summary>
+    public event Action? CloseRequested;
+
+    internal void OnCloseRequested() => CloseRequested?.Invoke();
+
     /// <summary>Le bord intérieur du cadre a bougé (barre des tâches déplacée, DPI…).</summary>
     public event Action? Relaid;
 
@@ -43,6 +49,8 @@ internal sealed class ScreenSurface : IDisposable
         _window = new SurfaceWindow(this);
         foreach (var e in Edges) _bars[e] = new AppBarHost(this);
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reserve(); Layout(); };
+        // Windows applique la nouvelle zone de travail un peu après nos réservations : on se recale.
+        _relayout.Tick += (_, _) => { _relayout.Stop(); Layout(); };
     }
 
     public void Start()
@@ -151,15 +159,24 @@ internal sealed class ScreenSurface : IDisposable
             case AppBar.PosChanged:
                 if (!_busy) { _debounce.Stop(); _debounce.Start(); }
                 break;
-            case AppBar.FullScreenApp:
-                bool fs = lParam != 0;
-                if (fs == _fullScreen) return;
-                _fullScreen = fs;
-                _window.Visible = !fs;
-                FullScreenChanged?.Invoke(this, fs);
-                break;
+            // AppBar.FullScreenApp est ignoré : sans barre des tâches, notre propre surface couvre
+            // l'écran et Windows la prend pour une appli plein écran. On détecte nous-mêmes (FullScreen).
         }
     }
+
+    /// <summary>
+    /// Une appli plein écran (un jeu) occupe cet écran : le verre se masque. Appelé par le
+    /// <see cref="ShellContext"/>, qui surveille la fenêtre au premier plan.
+    /// </summary>
+    public void SetFullScreen(bool fs)
+    {
+        if (fs == _fullScreen) return;
+        _fullScreen = fs;
+        _window.Visible = !fs;
+        FullScreenChanged?.Invoke(this, fs);
+    }
+
+    internal void OnWorkAreaChanged() { _relayout.Stop(); _relayout.Start(); }
 
     internal void OnSettingChange()
     {
@@ -178,6 +195,7 @@ internal sealed class ScreenSurface : IDisposable
     public void Dispose()
     {
         _debounce.Dispose();
+        _relayout.Dispose();
         ReleaseReservation();
         foreach (var b in _bars.Values) b.DestroyHandle();
         _bars.Clear();
@@ -192,6 +210,7 @@ internal sealed class ScreenSurface : IDisposable
 internal sealed class SurfaceWindow : Form
 {
     private const int WM_SETTINGCHANGE = 0x001A;
+    private const int WM_CLOSE = 0x0010;
     private const int WM_DPICHANGED = 0x02E0;
     private const int WS_EX_TRANSPARENT = 0x00000020;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
@@ -244,8 +263,13 @@ internal sealed class SurfaceWindow : Form
                 m.Result = 0;
                 return;
             case WM_SETTINGCHANGE:
+                if (m.WParam == 0x2F /* SPI_SETWORKAREA */) _owner.OnWorkAreaChanged();
                 _owner.OnSettingChange();
                 break;
+            case WM_CLOSE:
+                // Demande de fermeture venue de Windows (taskkill…) : tout Azuria quitte proprement.
+                _owner.OnCloseRequested();
+                return;
         }
         base.WndProc(ref m);
     }

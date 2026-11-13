@@ -177,6 +177,16 @@ internal class GlassWindow : Form
         Moved?.Invoke(this);
     }
 
+    /// <summary>Repasse la fenêtre au-dessus des autres fenêtres « toujours au-dessus » (dont le verre).</summary>
+    public void RaiseAbove()
+    {
+        if (IsHandleCreated)
+            SetWindowPos(Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+
+    /// <summary>Envoie un message JSON à la page (<c>chrome.webview</c>, évènement « message »).</summary>
+    public void PostJson(string json) => _web.CoreWebView2?.PostWebMessageAsJson(json);
+
     /// <summary>Révèle le tiroir (sur commande).</summary>
     public void Reveal()
     {
