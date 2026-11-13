@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azuria — tableau de bord</title>
+  <link rel="stylesheet" href="encre.css">
+  <style>
+    /* Tableau de bord (DA §9) : contrôle segmenté en tête, quatre onglets. */
+    .dash { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 16px; }
+
+    /* Segmenté (DA §10) : groupe en verre léger rayon 14, marge 3 ; items h24 rayon 10. */
+    .seg {
+      position: relative; align-self: center; display: flex;
+      padding: 3px; background: var(--glass); border-radius: 14px;
+    }
+    .seg button {
+      position: relative; z-index: 1;
+      height: 24px; padding: 0 14px; border: 0; background: none; border-radius: 10px;
+      color: var(--text-2); font: 600 12px var(--font); line-height: 1; cursor: default;
+      transition: color var(--dur-hover) var(--ease-in);
+    }
+    .seg button:hover { color: var(--text); }
+    .seg button.active { color: var(--text); }
+    .ind {
+      position: absolute; top: 3px; left: 0; height: 24px; border-radius: 10px;
+      background: var(--accent-soft);
+      transition: transform 0.18s var(--ease-in), width 0.18s var(--ease-in); /* DA §11 */
+    }
+
+    .tabs { position: relative; flex: 1 1 auto; }
+    .tabs section {
+      position: absolute; inset: 0; opacity: 0; pointer-events: none;
+      transition: opacity 0.18s var(--ease-in);
+    }
+    .tabs section.shown { opacity: 1; pointer-events: auto; }
+
+    .card {
+      background: var(--surface-raised); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px;
+    }
+    .label { color: var(--text-3); font-size: 11px; }
+    .num { font-family: var(--font-num); font-weight: 600; font-size: 26px; line-height: 1; }
+    .mono { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); }
+
+    /* Accueil */
+    .home { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; height: 100%; }
+    .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+    .when .date { color: var(--text-2); font-size: 12px; margin-top: 6px; }
+    .row { display: flex; align-items: center; gap: 10px; }
+
+    .cal { display: flex; flex-direction: column; gap: 6px; }
+    .cal .title { font-weight: 700; font-size: 12px; }
+    .cal .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+    .cal .wd { font-size: 10px; color: var(--text-3); line-height: 18px; }
+    .cal .d { font-size: 11px; line-height: 20px; color: var(--text-2); border-radius: 8px; }
+    .cal .d.out { color: transparent; }
+    .cal .d.today { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+
+    /* Média */
+    .media { display: flex; gap: 16px; height: 100%; align-items: center; }
+    .cover { width: 140px; height: 140px; border-radius: 12px; flex: 0 0 auto;
+             background: var(--surface-raised); border: 1px solid var(--border); }
+    .media .title { font-weight: 700; font-size: 15px; }
+    .media .artist { color: var(--text-2); font-size: 12px; margin-top: 4px; }
+    .track { height: 4px; border-radius: 2px; background: var(--surface-raised); margin-top: 16px; position: relative; }
+    .track .fill { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--accent); }
+    .times { display: flex; justify-content: space-between; margin-top: 6px; }
+    .ctrls { display: flex; gap: 6px; margin-top: 12px; }
+    .ctrl { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--text-2);
+            transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in); }
+    .ctrl:hover { background: var(--hover); color: var(--text); }
+    .ctrl.main { background: var(--accent-tint); color: #fff; }
+
+    /* Performances : une seule teinte, l'accent (DA §10). */
+    .perf { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .meter .top { display: flex; justify-content: space-between; align-items: baseline; }
+    .meter .bar { height: 6px; border-radius: 3px; background: var(--surface-raised); margin-top: 10px; position: relative; }
+    .meter .bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--accent); }
+
+    /* Météo */
+    .weather { display: flex; flex-direction: column; gap: 12px; }
+    .hours { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+    .hour { text-align: center; display: flex; flex-direction: column; gap: 6px; }
+    .hour .t { font-size: 12px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <script src="drawer.js"></script>
+  <div class="content dash">
+    <div class="seg" id="seg">
+      <div class="ind" id="ind"></div>
+      <button data-tab="home" class="active">Accueil</button>
+      <button data-tab="media">Média</button>
+      <button data-tab="perf">Performances</button>
+      <button data-tab="weather">Météo</button>
+    </div>
+
+    <div class="tabs">
+      <!-- Accueil : heure, date, météo, média en cours, calendrier -->
+      <section data-tab="home" class="shown">
+        <div class="home">
+          <div class="col">
+            <div class="card when">
+              <div class="num" id="time">00:00</div>
+              <div class="date" id="date">—</div>
+            </div>
+            <div class="card row">
+              <div class="num">14°</div>
+              <div><div style="font-size:12px">Nuageux</div><div class="label">Min 9° · Max 16°</div></div>
+            </div>
+            <div class="card row">
+              <div class="ctrl main"><svg class="i" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z" fill="currentColor"/></svg></div>
+              <div style="min-width:0"><div style="font-size:12px;font-weight:700">Aucun média</div><div class="label">Rien en lecture</div></div>
+            </div>
+          </div>
+          <div class="card cal">
+            <div class="title" id="month">—</div>
+            <div class="grid" id="cal"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Média -->
+      <section data-tab="media">
+        <div class="media">
+          <div class="cover"></div>
+          <div style="flex:1;min-width:0">
+            <div class="title">Aucun média</div>
+            <div class="artist">Rien en lecture</div>
+            <div class="track"><div class="fill" style="width:0%"></div></div>
+            <div class="times"><span class="mono">0:00</span><span class="mono">0:00</span></div>
+            <div class="ctrls">
+              <div class="ctrl"><svg class="i" viewBox="0 0 24 24"><path d="M7 6v12"/><path d="M18 6l-8 6 8 6z" fill="currentColor"/></svg></div>
+              <div class="ctrl main"><svg class="i" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z" fill="currentColor"/></svg></div>
+              <div class="ctrl"><svg class="i" viewBox="0 0 24 24"><path d="M17 6v12"/><path d="M6 6l8 6-8 6z" fill="currentColor"/></svg></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Performances -->
+      <section data-tab="perf">
+        <div class="perf" id="perf"></div>
+      </section>
+
+      <!-- Météo -->
+      <section data-tab="weather">
+        <div class="weather">
+          <div class="card row">
+            <div class="num">14°</div>
+            <div><div style="font-size:12px">Nuageux</div><div class="label">Ressenti 12° · Humidité 72 %</div></div>
+          </div>
+          <div class="card hours" id="hours"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // --- onglets : l'indicateur glisse, le contenu se fond (DA §11) ---
+    const seg = document.getElementById('seg'), ind = document.getElementById('ind');
+    const buttons = [...seg.querySelectorAll('button')];
+    function select(tab) {
+      buttons.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      document.querySelectorAll('.tabs section').forEach(s => s.classList.toggle('shown', s.dataset.tab === tab));
+      const b = buttons.find(b => b.dataset.tab === tab);
+      ind.style.width = b.offsetWidth + 'px';
+      ind.style.transform = `translateX(${b.offsetLeft}px)`;
+    }
+    buttons.forEach(b => b.addEventListener('click', () => select(b.dataset.tab)));
+    // Position initiale une fois les polices chargées (les largeurs en dépendent).
+    document.fonts.ready.then(() => select('home'));
+
+    // --- heure, date, calendrier (réels) ---
+    const jours = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+    const mois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août',
+                  'septembre', 'octobre', 'novembre', 'décembre'];
+    function tick() {
+      const d = new Date();
+      document.getElementById('time').textContent =
+        `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      document.getElementById('date').textContent = `${jours[d.getDay()]} ${d.getDate()} ${mois[d.getMonth()]}`;
+    }
+    function calendar() {
+      const d = new Date(), y = d.getFullYear(), m = d.getMonth();
+      document.getElementById('month').textContent = `${mois[m]} ${y}`;
+      const first = (new Date(y, m, 1).getDay() + 6) % 7;   // lundi = 0
+      const days = new Date(y, m + 1, 0).getDate();
+      let html = ['L', 'M', 'M', 'J', 'V', 'S', 'D'].map(w => `<div class="wd">${w}</div>`).join('');
+      for (let i = 0; i < first; i++) html += '<div class="d out">·</div>';
+      for (let n = 1; n <= days; n++) html += `<div class="d${n === d.getDate() ? ' today' : ''}">${n}</div>`;
+      document.getElementById('cal').innerHTML = html;
+    }
+    tick(); calendar();
+    setInterval(tick, 1000);
+
+    // --- contenu factice (les vraies mesures et la météo viendront du C#) ---
+    const meters = [['Processeur', 23], ['Carte graphique', 41], ['Mémoire', 58], ['Disque', 67]];
+    document.getElementById('perf').innerHTML = meters.map(([n, v]) =>
+      `<div class="card meter"><div class="top"><span style="font-size:12px">${n}</span><span class="num">${v}<span style="font-size:12px"> %</span></span></div>
+       <div class="bar"><div class="fill" style="width:${v}%"></div></div></div>`).join('');
+    const hours = [['14 h', 14], ['15 h', 15], ['16 h', 15], ['17 h', 13], ['18 h', 12], ['19 h', 11]];
+    document.getElementById('hours').innerHTML = hours.map(([h, t]) =>
+      `<div class="hour"><span class="mono">${h}</span><span class="t">${t}°</span></div>`).join('');
+  </script>
+</body>
+</html>

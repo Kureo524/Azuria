@@ -172,38 +172,54 @@ elles et avec la barre et les bords. La fenêtre active a une bordure de 1 en `-
 
 ## 9. Le shell
 
-Tout est en verre plein, à 12 des bords de l'écran et à 12 les uns des autres.
+Organisation inspirée de Caelestia (les idées, jamais son code ni ses fichiers), dans les couleurs et la typo
+de cette DA. Les deux écrans forment **une seule zone** : chaque panneau s'attache au bord extérieur de
+l'ensemble des écrans (ou à l'écran du curseur pour le haut et le bas).
 
-**Barre** — en haut, sur toute la largeur, hauteur 40, rayon 14, à 12 des bords. **Masquée par défaut**, façon
-Caelestia : elle **descend** quand le curseur touche le bord haut de l'écran, et **remonte** quand il s'en éloigne.
-Elle ne fait que glisser verticalement (durées et courbes de la section 11) : sa forme et son contenu ne bougent
-pas. Les fenêtres commencent sous elle quand elle est révélée.
+**Cadre** — un **contour permanent** de verre, épaisseur 8, entoure la zone de travail de chaque écran (au-dessus
+de la barre des tâches), coins intérieurs arrondis à 18. Sa place est réservée : les fenêtres agrandies s'arrêtent
+à son bord intérieur. Il se masque quand une appli passe en plein écran (un jeu), et aucun tiroir ne s'ouvre alors.
 
-- À gauche : bouton Azuria (ouvre le panneau gauche), puis les bureaux (hauteur 28, rayon 9, SemiBold ; actif :
-  fond `--accent-soft`, texte `--accent`).
-- Au centre : heure et date ; un clic ouvre le tableau de bord.
-- À droite : zone de notification, icônes d'état (réseau, Bluetooth, son, batterie), puis un bouton qui ouvre le
-  panneau droit.
-- Séparateurs verticaux 1 × 20 en `--border-strong` entre les groupes.
+**Tiroirs** — tout panneau est un **tiroir qui sort du cadre** : bord collé droit, **congés concaves** (rayon 18)
+là où il rejoint le cadre, coins arrondis côté libre. Cadre et tiroirs sont un même verre (voile `--surface` sur
+le flou), d'un seul tenant, sans trait de contour. Un tiroir latéral pleine hauteur remplace les coins du cadre de
+son côté par ses propres congés. Un tiroir ne fait que **glisser** depuis son bord, de dessous le cadre
+(section 11) : sa forme et son contenu ne bougent pas. Masqué au repos.
 
-**Tableau de bord** — descend sous le centre de la barre, rayon 18, largeur 720 au plus. Un contrôle segmenté en
-tête, quatre onglets :
+**Barre** — verticale, collée au bord gauche, pleine hauteur, largeur 56. Révélée quand le curseur touche le bord
+gauche. Elle **remplace la barre des tâches de Windows**, masquée tant qu'Azuria tourne et rendue à sa sortie.
+De haut en bas :
+
+- le logo Azuria (ouvre le lanceur) ;
+- les bureaux, empilés (32 × 32, rayon 9, SemiBold ; actif : fond `--accent-soft`, texte `--accent`) ;
+- les **applis ouvertes** (icône 24 dans un bouton 40, rayon 11, nom en infobulle) ; celle au premier plan prend le
+  fond `--accent-soft` et un repère `--accent` de 3 au bord gauche. Un clic l'active, un clic sur celle au premier
+  plan la réduit ;
+- l'heure en vertical (heures au-dessus des minutes, Barlow Condensed) et la date courte ;
+- les icônes d'état (réseau, son, batterie) ;
+- le bouton de session (prend `--danger` au survol seulement). En attendant l'écran de session, il quitte Azuria.
+- Séparateurs horizontaux 24 × 1 en `--border-strong` entre les groupes.
+
+**Tableau de bord** — tiroir collé au bord haut, centré, rayon 18, largeur 640 (720 au plus). Il descend quand le
+curseur touche le haut d'un écran, **sur cet écran**. Un contrôle segmenté en tête, quatre onglets :
 
 - **Accueil** : utilisateur, horloge en grand, calendrier, aperçu météo, média en cours.
 - **Média** : pochette, titre, progression, commandes ; sortie audio.
 - **Performances** : processeur, carte graphique, mémoire, disques, réseau, batterie.
 - **Météo** : conditions actuelles, prévisions par heure et par jour.
 
-**Panneau gauche** — lanceur et applications. Hauteur de l'écran sous la barre, largeur 380, rayon 18. Champ de
-recherche en tête (il a le focus à l'ouverture), puis les applications épinglées et la liste complète. La même
-recherche trouve les applications, les fichiers, les réglages et les actions (éteindre, verrouiller…).
-S'ouvre aussi par la touche Windows.
+**Lanceur** — tiroir collé au bas de la zone de travail (au-dessus de la barre des tâches de Windows), centré,
+largeur 560, rayon 18. S'ouvre par le logo Azuria de la barre (plus tard aussi par la touche Windows), sur l'écran
+du curseur ; pas d'ouverture au survol, le bas de l'écran étant pris par la barre des tâches. Champ de recherche
+en tête (il a le focus à l'ouverture), puis les applications. La même recherche trouvera les applications, les
+fichiers, les réglages et les actions (éteindre, verrouiller…). Se range sur Échap ou au clic ailleurs.
 
-**Panneau droit** — notifications et réglages rapides. Mêmes dimensions. En haut les réglages rapides (Wi-Fi,
-Bluetooth, mode jeu, ne pas déranger, curseurs de volume et de luminosité), en dessous les notifications
-groupées par application, avec « tout effacer ».
+**Panneau droit** — notifications et réglages rapides. Tiroir collé au bord droit, pleine hauteur, largeur 200,
+révélé quand le curseur touche le bord droit. En haut les réglages rapides (Wi-Fi, Bluetooth, mode jeu, ne pas
+déranger, curseurs de volume et de luminosité), en dessous les notifications groupées par application, avec
+« tout effacer ».
 
-**Notification** — apparaît en haut à droite, sous la barre : largeur 360, rayon 14. Icône, titre Bold, texte
+**Notification** — apparaît en haut à droite : largeur 360, rayon 14. Icône, titre Bold, texte
 `--text-2`, actions en boutons compacts. Disparaît après 5 s et reste dans le panneau droit.
 
 **Volume, luminosité** — pastille en bas au centre, rayon 14 : icône, barre de niveau en `--accent`, valeur en
@@ -221,7 +237,8 @@ ouvrir un terminal ni les réglages de Windows.
 **Menus et infobulles** — verre plein, rayon 12, marge intérieure 4, largeur minimale 170. Item : rayon 8,
 `--text-2`, survol `--hover` + `--text`. Coche en `--accent`. Item indisponible à 40 %.
 
-Un seul panneau ouvert à la fois par côté. Un clic en dehors ou Échap le referme.
+Un seul tiroir ouvert à la fois par bord. Un tiroir révélé au survol se range quand le curseur s'en éloigne ; un
+tiroir ouvert sur commande (lanceur) se range sur Échap ou au clic ailleurs.
 
 ## 10. Composants
 
@@ -294,8 +311,8 @@ plutôt qu'une limite de Windows. À **re-vérifier devant l'écran physique** (
 
 | Cible                                               | Attendu sur Windows 11                                              | Constaté (prototype, 11 nov. 2026)                                                                 |
 | --------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Verre flouté sur le **fond d'écran**, rayon libre   | Possible pour nos fenêtres ; **premier prototype à faire**          | **Oui.** Acrylic DWM floute le fond d'écran ; rayon libre 14→30 via `SetWindowRgn` (coins crénelés, non lissés) |
-| Verre flouté sur les **fenêtres d'autres applis derrière** | (implicite dans la DA §6)                                    | **Non reproduit ici** (Acrylic, blur-behind, HostBackdrop : aucun). Suspect Parsec → à juger sur l'écran physique |
+| Verre flouté sur le **fond d'écran**, rayon libre   | Possible pour nos fenêtres ; **premier prototype à faire**          | **Oui.** Acrylic DWM floute le fond d'écran ; rayon libre 14→30 via `SetWindowRgn` (coins crénelés, non lissés). **13 nov. :** dans le shell, l'Acrylic DWM ignore la région (congés remplis en rectangle) et devient gris plat sur une fenêtre jamais active. **Solution retenue :** flou composé par nous (`CreateHostBackdropBrush` + `DWMWA_USE_HOSTBACKDROPBRUSH`), découpé par une géométrie Direct2D (`IGeometrySource2DInterop`) : forme libre, congés concaves, bords lissés |
+| Verre flouté sur les **fenêtres d'autres applis derrière** | (implicite dans la DA §6)                                    | **Non reproduit ici** (Acrylic, blur-behind, HostBackdrop : aucun). Suspect Parsec → à juger sur l'écran physique. **13 nov., portable sans Parsec** (Radeon intégrée + RTX 3060) : **Oui**, une autre appli derrière la barre est floutée |
 | Flou fluide pendant un glissé de panneau            | À mesurer, y compris sur carte graphique intégrée                   | **Fluide** sur RX 6600 : ~8 ms/image, 0 image > 20 ms (glissé 100 px/0,2 s et 300 px/1 s). iGPU non testable ici |
 | Bordure d'accent sur la fenêtre active              | Possible : Windows laisse choisir la couleur de bordure             | **Non** pour une fenêtre d'une **autre** appli : `DWMWA_BORDER_COLOR` renvoie S_OK mais est ignoré. OK pour nos propres fenêtres |
 | Rayon des fenêtres des applications                 | Imposé par Windows (environ 8) ; on ne le change pas                | Non testé (hors prototype)                                                                          |
@@ -305,6 +322,7 @@ plutôt qu'une limite de Windows. À **re-vérifier devant l'écran physique** (
 | Pavage, écarts, bureaux                             | Possible, par un gestionnaire de fenêtres en espace utilisateur     | Non testé (hors prototype)                                                                          |
 | Animations d'ouverture et de fermeture des fenêtres | Celles de Windows                                                   | Non testé (hors prototype)                                                                          |
 | Écran de verrouillage                               | Celui de Windows                                                    | Non testé (hors prototype)                                                                          |
+| Barre des tâches de Windows retirée, applis ouvertes dans la barre | Possible sans injection                 | **Oui** (13 nov.) : masquage auto (`ABM_SETSTATE`) + fenêtre de la barre cachée ; liste des fenêtres par `EnumWindows` + shell hook, activation par `SetForegroundWindow`. Tout est rendu à la sortie (bouton d'alimentation, `Azuria.exe --quitter`, fin de session) |
 
 ## 14. Checklist avant de livrer une UI
 

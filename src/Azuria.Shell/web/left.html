@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azuria — barre</title>
+  <link rel="stylesheet" href="encre.css">
+  <style>
+    /* Barre principale verticale (DA §9) : logo, bureaux, heure, état, alimentation. */
+    .bar {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 6px; padding: 12px 0;
+    }
+    .spacer { flex: 1 1 auto; }
+    .sep { width: 24px; height: 1px; background: var(--border-strong); flex: 0 0 auto; margin: 4px 0; }
+
+    .btn {
+      width: 40px; height: 40px; flex: 0 0 auto;
+      border-radius: 11px; display: grid; place-items: center;
+      color: var(--text-3);
+      transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
+    }
+    .btn:hover { background: var(--hover); color: var(--text); }
+    .logo { color: var(--text); font-weight: 700; font-size: 17px; line-height: 1; }
+    .power:hover { color: var(--danger); } /* l'action destructrice ne prend la couleur qu'au survol */
+
+    /* Bureaux, empilés */
+    .desks { display: flex; flex-direction: column; gap: 4px; }
+    .desk {
+      width: 32px; height: 32px; border-radius: var(--r-pill);
+      display: grid; place-items: center;
+      color: var(--text-2); font-weight: 600; font-size: 12px; line-height: 1;
+      transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
+    }
+    .desk:hover { background: var(--hover); color: var(--text); }
+    .desk.active { background: var(--accent-soft); color: var(--accent); }
+
+    /* Heure verticale */
+    .clock {
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+      font-family: var(--font-num); font-weight: 600; font-size: 19px; line-height: 1;
+      color: var(--text); padding: 4px 0;
+    }
+    .clock .date { font-family: var(--font); font-weight: 400; font-size: 10px; color: var(--text-3); margin-top: 5px; }
+
+    .status { display: flex; flex-direction: column; gap: 2px; }
+
+    /* Applis ouvertes (remplacent la barre des tâches de Windows) */
+    .apps {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      flex: 0 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none;
+    }
+    .apps::-webkit-scrollbar { display: none; }
+    .app { position: relative; }
+    .app img { width: 24px; height: 24px; }
+    .app .initial { font-weight: 600; font-size: 13px; color: var(--text-2); }
+    .app.active { background: var(--accent-soft); }
+    .app.active::before {           /* repère de l'appli au premier plan */
+      content: ''; position: absolute; left: -8px; top: 12px; bottom: 12px;
+      width: 3px; border-radius: 2px; background: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <script src="drawer.js"></script>
+  <div class="content bar">
+    <div class="btn logo" id="logo" title="Applications">A</div>
+    <div class="sep"></div>
+
+    <div class="desks" id="desks"></div>
+
+    <div class="sep" id="apps-sep" hidden></div>
+    <div class="apps" id="apps"></div>
+
+    <div class="spacer"></div>
+
+    <div class="clock">
+      <span id="hh">00</span><span id="mm">00</span>
+      <span class="date" id="date">—</span>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="status">
+      <div class="btn" title="Réseau">
+        <svg class="i" viewBox="0 0 24 24"><path d="M3 9.5a14 14 0 0 1 18 0"/><path d="M6 13a9.5 9.5 0 0 1 12 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="0.9" fill="currentColor" stroke="none"/></svg>
+      </div>
+      <div class="btn" title="Son">
+        <svg class="i" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path d="M18 7a7 7 0 0 1 0 10"/></svg>
+      </div>
+      <div class="btn" title="Batterie">
+        <svg class="i" viewBox="0 0 24 24"><rect x="3" y="7.5" width="16" height="9" rx="2"/><path d="M21 11v2"/><rect x="5" y="9.5" width="9" height="5" rx="0.8" fill="currentColor" stroke="none"/></svg>
+      </div>
+    </div>
+
+    <div class="btn power" id="power" title="Quitter Azuria">
+      <svg class="i" viewBox="0 0 24 24"><path d="M12 3.5v8"/><path d="M7 6.5a7.5 7.5 0 1 0 10 0"/></svg>
+    </div>
+  </div>
+
+  <script>
+    // Bureaux factices (les vrais bureaux virtuels viendront du C#).
+    const desks = [1, 2, 3, 4];
+    document.getElementById('desks').innerHTML =
+      desks.map((n, i) => `<div class="desk${i === 0 ? ' active' : ''}">${n}</div>`).join('');
+
+    // Le logo ouvre / range le lanceur (géré par le C#).
+    document.getElementById('logo').addEventListener('click',
+      () => window.chrome?.webview?.postMessage('launcher'));
+
+    // Bouton d'alimentation : quitte Azuria (provisoire, en attendant l'écran de session, DA §9).
+    document.getElementById('power').addEventListener('click',
+      () => window.chrome?.webview?.postMessage('quit'));
+
+    // Applis ouvertes : la liste vient du C# ; un clic active l'appli (ou la réduit si elle est
+    // déjà au premier plan, comme la barre des tâches).
+    const apps = document.getElementById('apps');
+    const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    window.chrome?.webview?.addEventListener('message', e => {
+      const m = e.data;
+      if (m?.type !== 'apps') return;
+      document.getElementById('apps-sep').hidden = m.items.length === 0;
+      apps.innerHTML = m.items.map(a =>
+        `<div class="btn app${a.active ? ' active' : ''}" data-id="${a.id}" title="${esc(a.title)}">` +
+        (a.icon ? `<img src="${a.icon}" alt="">` : `<span class="initial">${esc(a.title.slice(0, 1).toUpperCase())}</span>`) +
+        `</div>`).join('');
+    });
+    apps.addEventListener('click', e => {
+      const b = e.target.closest('.app');
+      if (b) window.chrome?.webview?.postMessage('app:' + b.dataset.id);
+    });
+    window.chrome?.webview?.postMessage('apps');
+
+    // Heure verticale + date courte.
+    const mois = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
+    function tick() {
+      const d = new Date();
+      document.getElementById('hh').textContent = String(d.getHours()).padStart(2, '0');
+      document.getElementById('mm').textContent = String(d.getMinutes()).padStart(2, '0');
+      document.getElementById('date').textContent = `${d.getDate()} ${mois[d.getMonth()]}`;
+    }
+    tick();
+    setInterval(tick, 1000);
+  </script>
+</body>
+</html>

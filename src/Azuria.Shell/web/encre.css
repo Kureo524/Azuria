@@ -82,3 +82,18 @@ html, body {
   user-select: none;
   cursor: default;
 }
+
+/* ---- Tiroirs (panneaux qui sortent du cadre de l'écran) ----
+   Le verre (flou + voile --surface, congés concaves) est composé côté natif, d'un seul tenant avec
+   le cadre : la page est transparente. Zone utile = corps du tiroir, hors congés (drawer.js). */
+.content {
+  position: absolute;
+  top: var(--inset-t, 0); bottom: var(--inset-b, 0);
+  left: var(--inset-l, 0); right: var(--inset-r, 0);
+}
+
+/* Icônes au trait (DA §10). */
+.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8;
+     stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+
+input { -webkit-user-select: text; user-select: text; }
