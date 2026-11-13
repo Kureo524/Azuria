@@ -187,13 +187,17 @@ son côté par ses propres congés. Un tiroir ne fait que **glisser** depuis son
 (section 11) : sa forme et son contenu ne bougent pas. Masqué au repos.
 
 **Barre** — verticale, collée au bord gauche, pleine hauteur, largeur 56. Révélée quand le curseur touche le bord
-gauche. De haut en bas :
+gauche. Elle **remplace la barre des tâches de Windows**, masquée tant qu'Azuria tourne et rendue à sa sortie.
+De haut en bas :
 
 - le logo Azuria (ouvre le lanceur) ;
 - les bureaux, empilés (32 × 32, rayon 9, SemiBold ; actif : fond `--accent-soft`, texte `--accent`) ;
+- les **applis ouvertes** (icône 24 dans un bouton 40, rayon 11, nom en infobulle) ; celle au premier plan prend le
+  fond `--accent-soft` et un repère `--accent` de 3 au bord gauche. Un clic l'active, un clic sur celle au premier
+  plan la réduit ;
 - l'heure en vertical (heures au-dessus des minutes, Barlow Condensed) et la date courte ;
 - les icônes d'état (réseau, son, batterie) ;
-- le bouton de session (prend `--danger` au survol seulement).
+- le bouton de session (prend `--danger` au survol seulement). En attendant l'écran de session, il quitte Azuria.
 - Séparateurs horizontaux 24 × 1 en `--border-strong` entre les groupes.
 
 **Tableau de bord** — tiroir collé au bord haut, centré, rayon 18, largeur 640 (720 au plus). Il descend quand le
@@ -318,6 +322,7 @@ plutôt qu'une limite de Windows. À **re-vérifier devant l'écran physique** (
 | Pavage, écarts, bureaux                             | Possible, par un gestionnaire de fenêtres en espace utilisateur     | Non testé (hors prototype)                                                                          |
 | Animations d'ouverture et de fermeture des fenêtres | Celles de Windows                                                   | Non testé (hors prototype)                                                                          |
 | Écran de verrouillage                               | Celui de Windows                                                    | Non testé (hors prototype)                                                                          |
+| Barre des tâches de Windows retirée, applis ouvertes dans la barre | Possible sans injection                 | **Oui** (13 nov.) : masquage auto (`ABM_SETSTATE`) + fenêtre de la barre cachée ; liste des fenêtres par `EnumWindows` + shell hook, activation par `SetForegroundWindow`. Tout est rendu à la sortie (bouton d'alimentation, `Azuria.exe --quitter`, fin de session) |
 
 ## 14. Checklist avant de livrer une UI
 
