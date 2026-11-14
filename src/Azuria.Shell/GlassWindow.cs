@@ -10,6 +10,10 @@ namespace Azuria.Shell;
 /// <summary>Bord d'écran auquel un tiroir est collé (None = tiroir flottant).</summary>
 internal enum DrawerEdge { None, Top, Bottom, Left, Right }
 
+/// <summary>Côtés d'un tiroir collés au cadre.</summary>
+[Flags]
+internal enum DrawerSides { None = 0, Left = 1, Top = 2, Right = 4, Bottom = 8 }
+
 /// <summary>Mesures communes du shell (px logiques, DA §8–9).</summary>
 internal static class ShellMetrics
 {
@@ -17,6 +21,8 @@ internal static class ShellMetrics
     public const int Frame = 8;
     /// <summary>Rayon des coins intérieurs du cadre et des congés où un tiroir le rejoint.</summary>
     public const int Fillet = 18;
+    /// <summary>Largeur du fondu du voile, du cadre (plus couvrant) vers le tiroir, côté collé.</summary>
+    public const int Fade = 16;
 }
 
 /// <summary>
@@ -107,6 +113,16 @@ internal class GlassWindow : Form
 
     /// <summary>Bord du cadre d'où sort le tiroir.</summary>
     public virtual DrawerEdge Edge => DrawerEdge.None;
+
+    /// <summary>Côtés collés au cadre (fondus) : un tiroir latéral pleine hauteur touche aussi le haut et le bas.</summary>
+    public DrawerSides AttachedSides => Edge switch
+    {
+        DrawerEdge.Top => DrawerSides.Top,
+        DrawerEdge.Bottom => DrawerSides.Bottom,
+        DrawerEdge.Left => DrawerSides.Left | DrawerSides.Top | DrawerSides.Bottom,
+        DrawerEdge.Right => DrawerSides.Right | DrawerSides.Top | DrawerSides.Bottom,
+        _ => DrawerSides.None,
+    };
 
     /// <summary>Ne vole pas le focus (vrai pour les barres/panneaux, faux pour le lanceur où l'on tape).</summary>
     protected virtual bool NoActivate => true;
@@ -297,8 +313,13 @@ internal class GlassWindow : Form
     /// <summary>
     /// Glisse la fenêtre entre caché et révélé, cadencé par DWM (synchronisé au rafraîchissement).
     /// Seule la position change (taille constante), donc rien ne se remet en page pendant le glissé.
+    ///
+    /// Entre deux pas, on rend la main à la boucle de messages : c'est là que Windows.UI.Composition
+    /// envoie les changements du verre (position de la couche) à DWM. Une boucle bloquante déplaçait
+    /// la page à chaque image mais ne livrait le verre qu'à la fin : le contenu arrivait avant le
+    /// panneau. L'attente de l'image suivante (DwmFlush) se fait donc hors du fil d'interface.
     /// </summary>
-    private void Slide(bool shown)
+    private async void Slide(bool shown)
     {
         _shownState = shown;
         _animating = true;
@@ -328,7 +349,8 @@ internal class GlassWindow : Form
                 SetWindowPos(Handle, 0, Lerp(from.X, to.X, e), Lerp(from.Y, to.Y, e), 0, 0,
                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
                 Track();
-                Dwm.Flush();
+                await Task.Run(Dwm.Flush); // la boucle de messages tourne : le verre part avec la page
+                if (IsDisposed || !IsHandleCreated) return;
             }
             SetWindowPos(Handle, 0, to.X, to.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
             // Une fois rangée, la fenêtre est vraiment masquée.
