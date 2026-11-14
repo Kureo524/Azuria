@@ -188,6 +188,14 @@ cadre à la sienne (coins en onglet), pour qu'aucune frontière ne marque la jon
 hauteur remplace les coins du cadre de son côté par ses propres congés. Un tiroir ne fait que **glisser** depuis son bord, de dessous le cadre
 (section 11) : sa forme et son contenu ne bougent pas. Masqué au repos.
 
+**Fenêtres** — les fenêtres d'applis sont **pavées** dans la zone de travail de leur écran (idée du « dwindle » de
+Hyprland) : **10** entre une fenêtre et le cadre, **10** entre deux fenêtres. Une seule fenêtre prend toute la zone ;
+la deuxième la partage en deux, côte à côte ; chaque nouvelle coupe en deux la place de la précédente, dans le sens
+le plus long. Glisser une fenêtre sur une autre échange leurs places, sur un autre écran l'y fait passer ; un
+redimensionnement à la main est annulé. Restent libres : boîtes de dialogue, fenêtres non redimensionnables ou
+toujours au-dessus, fenêtres agrandies à la main, et **tout jeu** (plein écran, ou dossiers Riot Games, Steam, Epic
+Games, Vanguard). Le pavage s'arrête pendant un jeu en plein écran.
+
 **Barre** — verticale, collée au bord gauche, pleine hauteur, largeur 56. Révélée quand le curseur touche le bord
 gauche. Elle **remplace la barre des tâches de Windows**, masquée tant qu'Azuria tourne et rendue à sa sortie.
 De haut en bas :
