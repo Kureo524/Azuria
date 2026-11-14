@@ -45,6 +45,8 @@
   --accent-text: #adbfe0;
   --accent-soft: rgba(143, 164, 204, 0.14);
   --accent-tint: rgba(143, 164, 204, 0.42);
+  --danger: #d9646c;
+  --warning: #d9aa3a;
 
   /* §8 — rayons */
   --r-bar: 14px;
