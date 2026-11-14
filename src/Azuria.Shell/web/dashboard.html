@@ -6,7 +6,8 @@
   <title>Azuria — tableau de bord</title>
   <link rel="stylesheet" href="encre.css">
   <style>
-    /* Tableau de bord (DA §9) : contrôle segmenté en tête, quatre onglets. */
+    /* Tableau de bord (DA §9) : contrôle segmenté en tête, quatre onglets. Les données (lecteur en
+       cours, ressources, météo) viennent du C# (DashboardFeed). */
     .dash { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 16px; }
 
     /* Segmenté (DA §10) : groupe en verre léger rayon 14, marge 3 ; items h24 rayon 10. */
@@ -37,17 +38,24 @@
 
     .card {
       background: var(--surface-raised); border: 1px solid var(--border); border-radius: 12px;
-      padding: 12px;
+      padding: 12px; min-width: 0;
     }
     .label { color: var(--text-3); font-size: 11px; }
     .num { font-family: var(--font-num); font-weight: 600; font-size: 26px; line-height: 1; }
     .mono { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); }
+    .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row { display: flex; align-items: center; gap: 10px; }
+    .grow { flex: 1 1 auto; min-width: 0; }
+    .wi { width: 28px; height: 28px; flex: 0 0 auto; color: var(--text-2); }
+    .wi.big { width: 40px; height: 40px; }
+    .wi.small { width: 18px; height: 18px; }
 
     /* Accueil */
     .home { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; height: 100%; }
     .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
     .when .date { color: var(--text-2); font-size: 12px; margin-top: 6px; }
-    .row { display: flex; align-items: center; gap: 10px; }
+    .thumb { width: 32px; height: 32px; border-radius: 8px; flex: 0 0 auto; object-fit: cover;
+             background: var(--surface-raised); border: 1px solid var(--border); }
 
     .cal { display: flex; flex-direction: column; gap: 6px; }
     .cal .title { font-weight: 700; font-size: 12px; }
@@ -59,30 +67,54 @@
 
     /* Média */
     .media { display: flex; gap: 16px; height: 100%; align-items: center; }
-    .cover { width: 140px; height: 140px; border-radius: 12px; flex: 0 0 auto;
-             background: var(--surface-raised); border: 1px solid var(--border); }
+    .cover { width: 150px; height: 150px; border-radius: 12px; flex: 0 0 auto; object-fit: cover;
+             background: var(--surface-raised); border: 1px solid var(--border);
+             display: grid; place-items: center; color: var(--text-3); }
+    .cover .i { width: 40px; height: 40px; }
     .media .title { font-weight: 700; font-size: 15px; }
     .media .artist { color: var(--text-2); font-size: 12px; margin-top: 4px; }
+    .media .src { margin-top: 4px; }
     .track { height: 4px; border-radius: 2px; background: var(--surface-raised); margin-top: 16px; position: relative; }
+    .track.seekable { cursor: pointer; }
+    .track::before { content: ""; position: absolute; inset: -6px 0; } /* zone de clic plus haute */
     .track .fill { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--accent); }
     .times { display: flex; justify-content: space-between; margin-top: 6px; }
     .ctrls { display: flex; gap: 6px; margin-top: 12px; }
     .ctrl { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--text-2);
-            transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in); }
+            flex: 0 0 auto;
+            transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in),
+                        opacity var(--dur-hover) var(--ease-in); }
     .ctrl:hover { background: var(--hover); color: var(--text); }
     .ctrl.main { background: var(--accent-tint); color: #fff; }
+    .ctrl.off { opacity: 0.35; pointer-events: none; }
 
     /* Performances : une seule teinte, l'accent (DA §10). */
-    .perf { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .meter .top { display: flex; justify-content: space-between; align-items: baseline; }
-    .meter .bar { height: 6px; border-radius: 3px; background: var(--surface-raised); margin-top: 10px; position: relative; }
-    .meter .bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--accent); }
+    .perf { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .meter .top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+    .meter .name { font-size: 12px; }
+    .meter .bar { height: 6px; border-radius: 3px; background: var(--surface-raised); margin-top: 10px; position: relative; overflow: hidden; }
+    .meter .bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--accent);
+                        transition: width 0.4s var(--ease-in); }
+    .meter .sub { margin-top: 8px; }
+    .unit { font-size: 12px; }
 
     /* Météo */
-    .weather { display: flex; flex-direction: column; gap: 12px; }
-    .hours { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-    .hour { text-align: center; display: flex; flex-direction: column; gap: 6px; }
-    .hour .t { font-size: 12px; font-weight: 600; }
+    .weather { display: flex; flex-direction: column; gap: 10px; height: 100%; }
+    .weather .now { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
+    .facts { display: grid; grid-template-columns: auto auto; gap: 2px 14px; margin-left: auto; }
+    .strip { display: grid; gap: 4px; padding: 8px 6px; }
+    .strip.hours { grid-template-columns: repeat(8, 1fr); }
+    .strip.days { grid-template-columns: repeat(6, 1fr); }
+    .slot { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .slot .t { font-size: 12px; font-weight: 600; }
+    .slot .lo { color: var(--text-3); font-weight: 400; }
+    .notice { height: 100%; display: grid; place-items: center; text-align: center; gap: 10px; color: var(--text-2); }
+    .btn {
+      height: 28px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border-strong);
+      background: var(--surface-raised); color: var(--text); font: 600 12px var(--font); cursor: default;
+      transition: background var(--dur-hover) var(--ease-in);
+    }
+    .btn:hover { background: var(--hover); }
   </style>
 </head>
 <body>
@@ -105,14 +137,8 @@
               <div class="num" id="time">00:00</div>
               <div class="date" id="date">—</div>
             </div>
-            <div class="card row">
-              <div class="num">14°</div>
-              <div><div style="font-size:12px">Nuageux</div><div class="label">Min 9° · Max 16°</div></div>
-            </div>
-            <div class="card row">
-              <div class="ctrl main"><svg class="i" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z" fill="currentColor"/></svg></div>
-              <div style="min-width:0"><div style="font-size:12px;font-weight:700">Aucun média</div><div class="label">Rien en lecture</div></div>
-            </div>
+            <div class="card row" id="home-weather"></div>
+            <div class="card row" id="home-media"></div>
           </div>
           <div class="card cal">
             <div class="title" id="month">—</div>
@@ -124,16 +150,17 @@
       <!-- Média -->
       <section data-tab="media">
         <div class="media">
-          <div class="cover"></div>
-          <div style="flex:1;min-width:0">
-            <div class="title">Aucun média</div>
-            <div class="artist">Rien en lecture</div>
-            <div class="track"><div class="fill" style="width:0%"></div></div>
-            <div class="times"><span class="mono">0:00</span><span class="mono">0:00</span></div>
+          <div class="cover" id="cover"></div>
+          <div class="grow">
+            <div class="title ellipsis" id="m-title">Rien en lecture</div>
+            <div class="artist ellipsis" id="m-artist">Lance une musique ou une vidéo</div>
+            <div class="mono src ellipsis" id="m-src"></div>
+            <div class="track" id="track"><div class="fill" id="fill" style="width:0%"></div></div>
+            <div class="times"><span class="mono" id="t-pos">0:00</span><span class="mono" id="t-dur">0:00</span></div>
             <div class="ctrls">
-              <div class="ctrl"><svg class="i" viewBox="0 0 24 24"><path d="M7 6v12"/><path d="M18 6l-8 6 8 6z" fill="currentColor"/></svg></div>
-              <div class="ctrl main"><svg class="i" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z" fill="currentColor"/></svg></div>
-              <div class="ctrl"><svg class="i" viewBox="0 0 24 24"><path d="M17 6v12"/><path d="M6 6l8 6-8 6z" fill="currentColor"/></svg></div>
+              <div class="ctrl" id="prev"><svg class="i" viewBox="0 0 24 24"><path d="M7 6v12"/><path d="M18 6l-8 6 8 6z" fill="currentColor"/></svg></div>
+              <div class="ctrl main" id="play"></div>
+              <div class="ctrl" id="next"><svg class="i" viewBox="0 0 24 24"><path d="M17 6v12"/><path d="M6 6l8 6-8 6z" fill="currentColor"/></svg></div>
             </div>
           </div>
         </div>
@@ -146,20 +173,19 @@
 
       <!-- Météo -->
       <section data-tab="weather">
-        <div class="weather">
-          <div class="card row">
-            <div class="num">14°</div>
-            <div><div style="font-size:12px">Nuageux</div><div class="label">Ressenti 12° · Humidité 72 %</div></div>
-          </div>
-          <div class="card hours" id="hours"></div>
-        </div>
+        <div class="weather" id="weather"></div>
       </section>
     </div>
   </div>
 
   <script>
+    const view = window.chrome?.webview;
+    const $ = id => document.getElementById(id);
+    const send = m => view?.postMessage(m);
+    const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
     // --- onglets : l'indicateur glisse, le contenu se fond (DA §11) ---
-    const seg = document.getElementById('seg'), ind = document.getElementById('ind');
+    const seg = $('seg'), ind = $('ind');
     const buttons = [...seg.querySelectorAll('button')];
     function select(tab) {
       buttons.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
@@ -169,40 +195,224 @@
       ind.style.transform = `translateX(${b.offsetLeft}px)`;
     }
     buttons.forEach(b => b.addEventListener('click', () => select(b.dataset.tab)));
-    // Position initiale une fois les polices chargées (les largeurs en dépendent).
-    document.fonts.ready.then(() => select('home'));
+    document.fonts.ready.then(() => select('home')); // les largeurs dépendent des polices
 
-    // --- heure, date, calendrier (réels) ---
+    // --- heure, date, calendrier ---
     const jours = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+    const joursCourts = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
     const mois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août',
                   'septembre', 'octobre', 'novembre', 'décembre'];
+    let calDay = -1;
     function tick() {
       const d = new Date();
-      document.getElementById('time').textContent =
-        `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-      document.getElementById('date').textContent = `${jours[d.getDay()]} ${d.getDate()} ${mois[d.getMonth()]}`;
+      $('time').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      $('date').textContent = `${jours[d.getDay()]} ${d.getDate()} ${mois[d.getMonth()]}`;
+      if (d.getDate() !== calDay) { calDay = d.getDate(); calendar(d); } // minuit passé
     }
-    function calendar() {
-      const d = new Date(), y = d.getFullYear(), m = d.getMonth();
-      document.getElementById('month').textContent = `${mois[m]} ${y}`;
+    function calendar(d) {
+      const y = d.getFullYear(), m = d.getMonth();
+      $('month').textContent = `${mois[m]} ${y}`;
       const first = (new Date(y, m, 1).getDay() + 6) % 7;   // lundi = 0
       const days = new Date(y, m + 1, 0).getDate();
       let html = ['L', 'M', 'M', 'J', 'V', 'S', 'D'].map(w => `<div class="wd">${w}</div>`).join('');
       for (let i = 0; i < first; i++) html += '<div class="d out">·</div>';
       for (let n = 1; n <= days; n++) html += `<div class="d${n === d.getDate() ? ' today' : ''}">${n}</div>`;
-      document.getElementById('cal').innerHTML = html;
+      $('cal').innerHTML = html;
     }
-    tick(); calendar();
+    tick();
     setInterval(tick, 1000);
 
-    // --- contenu factice (les vraies mesures et la météo viendront du C#) ---
-    const meters = [['Processeur', 23], ['Carte graphique', 41], ['Mémoire', 58], ['Disque', 67]];
-    document.getElementById('perf').innerHTML = meters.map(([n, v]) =>
-      `<div class="card meter"><div class="top"><span style="font-size:12px">${n}</span><span class="num">${v}<span style="font-size:12px"> %</span></span></div>
-       <div class="bar"><div class="fill" style="width:${v}%"></div></div></div>`).join('');
-    const hours = [['14 h', 14], ['15 h', 15], ['16 h', 15], ['17 h', 13], ['18 h', 12], ['19 h', 11]];
-    document.getElementById('hours').innerHTML = hours.map(([h, t]) =>
-      `<div class="hour"><span class="mono">${h}</span><span class="t">${t}°</span></div>`).join('');
+    // --- icônes (au trait, DA §10) ---
+    const svg = (body, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+    const ICON = {
+      play: '<path d="M8 5.5v13l10-6.5z" fill="currentColor"/>',
+      pause: '<path d="M8 5.5v13M16 5.5v13" stroke-width="2.6"/>',
+      note: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>',
+    };
+    const cloud = 'M7 18h10a4 4 0 0 0 .4-7.98A5.5 5.5 0 0 0 6.6 9.6 4.2 4.2 0 0 0 7 18z';
+    const W = {
+      sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+      moon: '<path d="M19 14.5A8 8 0 0 1 9.5 5a8 8 0 1 0 9.5 9.5z"/>',
+      partSun: '<path d="M8.5 3.5v1.2M3.5 8.5h1.2M4.9 4.9l.9.9M12.1 4.9l-.9.9"/><path d="M5.6 11.3a3.5 3.5 0 1 1 6-3.4"/><path d="M9 19h8a3.5 3.5 0 0 0 .3-7 4.8 4.8 0 0 0-9.2 1A3 3 0 0 0 9 19z"/>',
+      partMoon: '<path d="M11 6.5A4 4 0 0 1 6 11.6a4.5 4.5 0 1 0 5-5.1z"/><path d="M9 19h8a3.5 3.5 0 0 0 .3-7 4.8 4.8 0 0 0-9.2 1A3 3 0 0 0 9 19z"/>',
+      cloud: `<path d="${cloud}"/>`,
+      fog: '<path d="M4 9h16M6 13h12M4 17h16"/>',
+      drizzle: `<path d="M7 15h10a4 4 0 0 0 .4-7.98A5.5 5.5 0 0 0 6.6 6.6 4.2 4.2 0 0 0 7 15z"/><path d="M9 18.5v.5M15 18.5v.5M12 20v.5"/>`,
+      rain: `<path d="M7 15h10a4 4 0 0 0 .4-7.98A5.5 5.5 0 0 0 6.6 6.6 4.2 4.2 0 0 0 7 15z"/><path d="M9 17.5l-1 3M13 17.5l-1 3M17 17.5l-1 3"/>`,
+      snow: `<path d="M7 15h10a4 4 0 0 0 .4-7.98A5.5 5.5 0 0 0 6.6 6.6 4.2 4.2 0 0 0 7 15z"/><path d="M8.5 19h.01M12 18h.01M15.5 19h.01M10 21.5h.01M14 21.5h.01" stroke-width="2.4"/>`,
+      storm: `<path d="M7 15h10a4 4 0 0 0 .4-7.98A5.5 5.5 0 0 0 6.6 6.6 4.2 4.2 0 0 0 7 15z"/><path d="M12.5 15l-2 3.5h3l-2 3.5"/>`,
+    };
+    // Codes météo de l'OMS (Open-Meteo) → libellé et icône.
+    function wmo(code, day = true) {
+      const m = [
+        [[0], 'Ciel dégagé', day ? 'sun' : 'moon'], [[1], 'Plutôt dégagé', day ? 'sun' : 'moon'],
+        [[2], 'Partiellement nuageux', day ? 'partSun' : 'partMoon'], [[3], 'Couvert', 'cloud'],
+        [[45, 48], 'Brouillard', 'fog'], [[51, 53, 55], 'Bruine', 'drizzle'], [[56, 57], 'Bruine verglaçante', 'drizzle'],
+        [[61], 'Pluie faible', 'rain'], [[63], 'Pluie', 'rain'], [[65], 'Forte pluie', 'rain'],
+        [[66, 67], 'Pluie verglaçante', 'rain'], [[71], 'Neige faible', 'snow'], [[73], 'Neige', 'snow'],
+        [[75], 'Forte neige', 'snow'], [[77], 'Grains de neige', 'snow'], [[80], 'Averses', 'rain'],
+        [[81], 'Averses', 'rain'], [[82], 'Fortes averses', 'rain'], [[85, 86], 'Averses de neige', 'snow'],
+        [[95], 'Orage', 'storm'], [[96, 99], 'Orage et grêle', 'storm'],
+      ].find(([codes]) => codes.includes(code));
+      return m ? { label: m[1], icon: W[m[2]] } : { label: '—', icon: W.cloud };
+    }
+
+    // --- média ---
+    let media = { present: false };
+    function mediaPos() {
+      if (!media.present) return 0;
+      const p = media.position + (media.playing ? (Date.now() - media.at) / 1000 : 0);
+      return Math.min(p, media.duration || p);
+    }
+    const clock = s => { s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+                         return (h ? `${h}:${String(m).padStart(2, '0')}` : m) + ':' + String(s % 60).padStart(2, '0'); };
+
+    function renderMedia() {
+      const m = media, on = m.present;
+      const cover = on && m.cover ? `<img class="cover" src="${m.cover}" alt="">` : `<div class="cover">${svg(ICON.note)}</div>`;
+      $('cover').outerHTML = cover.replace('class="cover"', 'class="cover" id="cover"');
+      $('m-title').textContent = on ? (m.title || 'Sans titre') : 'Rien en lecture';
+      $('m-artist').textContent = on ? (m.artist || '') : 'Lance une musique ou une vidéo';
+      $('m-src').textContent = on ? [m.album, m.source].filter(Boolean).join(' · ') : '';
+      $('play').innerHTML = svg(m.playing ? ICON.pause : ICON.play);
+      $('play').classList.toggle('off', !on);
+      $('prev').classList.toggle('off', !on || !m.canPrev);
+      $('next').classList.toggle('off', !on || !m.canNext);
+      $('track').classList.toggle('seekable', on && m.duration > 0);
+
+      $('home-media').innerHTML = on
+        ? `${m.cover ? `<img class="thumb" src="${m.cover}" alt="">` : `<div class="thumb"></div>`}
+           <div class="grow"><div class="ellipsis" style="font-size:12px;font-weight:700">${esc(m.title || 'Sans titre')}</div>
+           <div class="label ellipsis">${esc(m.artist || m.source)}</div></div>
+           <div class="ctrl main" id="home-play">${svg(m.playing ? ICON.pause : ICON.play)}</div>`
+        : `<div class="ctrl" style="pointer-events:none">${svg(ICON.note)}</div>
+           <div class="grow"><div style="font-size:12px;font-weight:700">Rien en lecture</div>
+           <div class="label">Lance une musique ou une vidéo</div></div>`;
+      progress();
+    }
+    function progress() {
+      const d = media.present ? media.duration : 0, p = mediaPos();
+      $('fill').style.width = d > 0 ? `${(100 * p / d).toFixed(2)}%` : '0%';
+      $('t-pos').textContent = clock(p);
+      $('t-dur').textContent = clock(d);
+    }
+    setInterval(() => { if (media.present && media.playing) progress(); }, 500);
+
+    $('play').addEventListener('click', () => send('media:toggle'));
+    $('prev').addEventListener('click', () => send('media:prev'));
+    $('next').addEventListener('click', () => send('media:next'));
+    document.addEventListener('click', e => { if (e.target.closest('#home-play')) send('media:toggle'); });
+    $('track').addEventListener('click', e => {
+      if (!media.present || !(media.duration > 0)) return;
+      const r = $('track').getBoundingClientRect();
+      const s = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * media.duration;
+      send('media:seek:' + s.toFixed(1));
+      media = { ...media, position: s, at: Date.now() }; // retour immédiat, le lecteur confirmera
+      progress();
+    });
+
+    // --- performances ---
+    const go = b => (b / 1073741824).toFixed(b >= 107374182400 ? 0 : 1).replace('.', ',');
+    function rate(b) {
+      if (b < 1024) return `${Math.round(b)} o/s`;
+      if (b < 1048576) return `${Math.round(b / 1024)} Ko/s`;
+      return `${(b / 1048576).toFixed(1).replace('.', ',')} Mo/s`;
+    }
+    function since(s) {
+      const d = Math.floor(s / 86400), h = Math.floor(s / 3600) % 24, m = Math.floor(s / 60) % 60;
+      return d ? `${d} j ${h} h` : h ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`;
+    }
+    function meter(name, pct, sub) {
+      const v = pct == null ? '—' : Math.round(pct);
+      return `<div class="card meter">
+        <div class="top"><span class="name ellipsis">${name}</span><span class="num">${v}<span class="unit">${pct == null ? '' : ' %'}</span></span></div>
+        <div class="bar"><div class="fill" style="width:${pct == null ? 0 : Math.min(100, pct)}%"></div></div>
+        <div class="mono sub ellipsis">${sub}</div></div>`;
+    }
+    let perfBuilt = false;
+    function renderStats(s) {
+      const cards = [
+        meter('Processeur', s.cpu, `Allumé depuis ${since(s.uptime)}`),
+        meter('Carte graphique', s.gpu, s.gpu == null ? 'Mesure indisponible' : 'Moteur 3D'),
+        meter('Mémoire', 100 * s.memUsed / s.memTotal, `${go(s.memUsed)} / ${go(s.memTotal)} Go`),
+        meter(`Disque ${esc(s.disk)}`, s.diskTotal ? 100 * s.diskUsed / s.diskTotal : null, `${go(s.diskUsed)} / ${go(s.diskTotal)} Go`),
+        `<div class="card meter"><div class="top"><span class="name">Réseau</span></div>
+           <div class="row" style="margin-top:10px;justify-content:space-between">
+             <div><div class="label">Réception</div><div style="font-weight:600;margin-top:2px">${rate(s.down)}</div></div>
+             <div style="text-align:right"><div class="label">Envoi</div><div style="font-weight:600;margin-top:2px">${rate(s.up)}</div></div>
+           </div></div>`,
+        s.battery == null
+          ? `<div class="card meter"><div class="top"><span class="name">Alimentation</span></div>
+               <div style="margin-top:10px;font-weight:600">Secteur</div><div class="mono sub">Pas de batterie</div></div>`
+          : meter('Batterie', s.battery, s.charging ? 'En charge' : 'Sur batterie'),
+      ];
+      // Première fois : on construit ; ensuite on ne met à jour que les valeurs (les barres glissent).
+      const perf = $('perf');
+      if (!perfBuilt) { perf.innerHTML = cards.join(''); perfBuilt = true; return; }
+      const tmp = document.createElement('div');
+      tmp.innerHTML = cards.join('');
+      [...tmp.children].forEach((card, i) => {
+        const old = perf.children[i];
+        if (!old) return;
+        const fill = card.querySelector('.fill'), oldFill = old.querySelector('.fill');
+        if (fill && oldFill) {
+          oldFill.style.width = fill.style.width;
+          old.querySelector('.num').innerHTML = card.querySelector('.num').innerHTML;
+          old.querySelector('.sub').innerHTML = card.querySelector('.sub').innerHTML;
+        } else old.replaceWith(card);
+      });
+    }
+
+    // --- météo ---
+    function renderWeather(w) {
+      const homeW = $('home-weather'), tab = $('weather');
+      if (w.state !== 'ok') {
+        const msg = w.state === 'location-off'
+          ? ['Localisation coupée', 'La météo a besoin de la position de Windows.', true]
+          : w.state === 'offline' ? ['Météo indisponible', 'Pas de connexion pour le moment.', false]
+          : ['Météo', 'Chargement…', false];
+        homeW.innerHTML = `${svg(W.cloud, 'wi')}<div class="grow"><div style="font-size:12px;font-weight:700">${msg[0]}</div><div class="label">${msg[1]}</div></div>`;
+        tab.innerHTML = `<div class="notice"><div>${svg(W.cloud, 'wi big')}<div style="font-weight:700;margin-top:8px">${msg[0]}</div>
+          <div class="label" style="margin-top:4px">${msg[1]}</div>
+          ${msg[2] ? '<button class="btn" id="loc" style="margin-top:12px">Ouvrir les paramètres</button>' : ''}</div></div>`;
+        $('loc')?.addEventListener('click', () => send('weather:location'));
+        return;
+      }
+      // Les heures et les jours sont filtrés à l'affichage : la réponse peut dater d'une demi-heure.
+      const d0 = new Date(), pad = x => String(x).padStart(2, '0');
+      const dayKey = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
+      const hourKey = `${dayKey}T${pad(d0.getHours())}`;
+      const nextHours = w.hours.filter(h => !h.time || h.time.slice(0, 13) > hourKey).slice(0, 8);
+      const nextDays = w.days.filter(d => d.date >= dayKey).slice(0, 6);
+      const n = w.now, c = wmo(n.code, n.day), today = nextDays[0] || {};
+      homeW.innerHTML = `${svg(c.icon, 'wi')}<div class="num">${n.temp}°</div>
+        <div class="grow"><div class="ellipsis" style="font-size:12px">${c.label}</div>
+        <div class="label">Min ${today.min}° · Max ${today.max}°</div></div>`;
+
+      const hours = nextHours.map(h => { const x = wmo(h.code, h.day);
+        return `<div class="slot"><span class="mono">${h.h} h</span>${svg(x.icon, 'wi small')}<span class="t">${h.temp}°</span></div>`; }).join('');
+      const days = nextDays.map((d, i) => { const x = wmo(d.code), dt = new Date(d.date + "T12:00");
+        return `<div class="slot"><span class="mono">${d.date === dayKey ? "auj." : joursCourts[dt.getDay()]}</span>${svg(x.icon, 'wi small')}
+                <span class="t">${d.max}° <span class="lo">${d.min}°</span></span></div>`; }).join('');
+      tab.innerHTML = `
+        <div class="card now">${svg(c.icon, 'wi big')}<div class="num" style="font-size:34px">${n.temp}°</div>
+          <div><div style="font-size:13px;font-weight:700">${c.label}</div><div class="label">Ressenti ${n.feels}°</div></div>
+          <div class="facts label"><span>Humidité</span><span>${Math.round(n.humidity)} %</span>
+            <span>Vent</span><span>${n.wind} km/h</span><span>Soleil</span><span>${w.sunrise} – ${w.sunset}</span></div></div>
+        <div class="card strip hours">${hours}</div>
+        <div class="card strip days">${days}</div>`;
+    }
+
+    // --- messages du C# ---
+    view?.addEventListener('message', e => {
+      const m = e.data;
+      if (m?.type === 'media') { media = m; renderMedia(); }
+      else if (m?.type === 'stats') renderStats(m);
+      else if (m?.type === 'weather') renderWeather(m);
+    });
+    renderMedia();
+    renderWeather({ state: 'loading' });
+    send('ready');
   </script>
 </body>
 </html>

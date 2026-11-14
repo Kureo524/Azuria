@@ -20,6 +20,7 @@ internal sealed class ShellContext : ApplicationContext
     private readonly StartKey? _startKey;
     private readonly Tiler _tiler = new();
     private readonly Catalog _catalog;
+    private readonly DashboardFeed? _dashboardFeed;
     private readonly System.Windows.Forms.Timer _fullScreenWatch = new() { Interval = 250 };
 
     public ShellContext()
@@ -43,6 +44,7 @@ internal sealed class ShellContext : ApplicationContext
 
         var bar = new SidePanelWindow("left.html", right: false, widthLogical: 48);       // barre principale
         var dashboard = new DashboardWindow();                                            // haut
+        _dashboardFeed = new DashboardFeed(dashboard);                                    // média, mesures, météo
         var sidebar = new SidePanelWindow("right.html", right: true, widthLogical: 200);  // réglages + notifs
         var launcher = new LauncherWindow();                                              // bas
 
@@ -112,6 +114,7 @@ internal sealed class ShellContext : ApplicationContext
         _fullScreenWatch.Stop();
         _startKey?.Dispose();
         _tiler.Dispose();
+        _dashboardFeed?.Dispose();
         _apps?.Dispose();
         _taskbar?.Dispose();
         DisposeSurfaces();
