@@ -172,38 +172,75 @@ elles et avec la barre et les bords. La fenêtre active a une bordure de 1 en `-
 
 ## 9. Le shell
 
-Tout est en verre plein, à 12 des bords de l'écran et à 12 les uns des autres.
+Organisation inspirée de Caelestia (les idées, jamais son code ni ses fichiers), dans les couleurs et la typo
+de cette DA. Les deux écrans forment **une seule zone** : chaque panneau s'attache au bord extérieur de
+l'ensemble des écrans (ou à l'écran du curseur pour le haut et le bas).
 
-**Barre** — en haut, sur toute la largeur, hauteur 40, rayon 14, à 12 des bords. **Masquée par défaut**, façon
-Caelestia : elle **descend** quand le curseur touche le bord haut de l'écran, et **remonte** quand il s'en éloigne.
-Elle ne fait que glisser verticalement (durées et courbes de la section 11) : sa forme et son contenu ne bougent
-pas. Les fenêtres commencent sous elle quand elle est révélée.
+**Cadre** — un **contour permanent** de verre, épaisseur 8, entoure la zone de travail de chaque écran (au-dessus
+de la barre des tâches), coins intérieurs arrondis à 18. Sa place est réservée : les fenêtres agrandies s'arrêtent
+à son bord intérieur. Il se masque quand une appli passe en plein écran (un jeu), et aucun tiroir ne s'ouvre alors.
 
-- À gauche : bouton Azuria (ouvre le panneau gauche), puis les bureaux (hauteur 28, rayon 9, SemiBold ; actif :
-  fond `--accent-soft`, texte `--accent`).
-- Au centre : heure et date ; un clic ouvre le tableau de bord.
-- À droite : zone de notification, icônes d'état (réseau, Bluetooth, son, batterie), puis un bouton qui ouvre le
-  panneau droit.
-- Séparateurs verticaux 1 × 20 en `--border-strong` entre les groupes.
+**Tiroirs** — tout panneau est un **tiroir qui sort du cadre** : bord collé droit, **congés concaves** (rayon 18)
+là où il rejoint le cadre, coins arrondis côté libre. Cadre et tiroirs sont un même verre (voile `--surface` sur
+le flou), d'un seul tenant, sans trait de contour. Le **cadre est plus couvrant** (voile à 0,84, la valeur
+`--surface`) que les tiroirs (0,62) : là où un tiroir touche le cadre, son voile **fond sur 16** de l'opacité du
+cadre à la sienne (coins en onglet), pour qu'aucune frontière ne marque la jonction. Un tiroir latéral pleine
+hauteur remplace les coins du cadre de son côté par ses propres congés. Un tiroir ne fait que **glisser** depuis son bord, de dessous le cadre
+(section 11) : sa forme et son contenu ne bougent pas. Masqué au repos.
 
-**Tableau de bord** — descend sous le centre de la barre, rayon 18, largeur 720 au plus. Un contrôle segmenté en
-tête, quatre onglets :
+**Fenêtres** — les fenêtres d'applis sont **pavées** dans la zone de travail de leur écran (idée du « dwindle » de
+Hyprland) : **10** entre une fenêtre et le cadre, **10** entre deux fenêtres. Une seule fenêtre prend toute la zone ;
+la deuxième la partage en deux, côte à côte ; chaque nouvelle coupe en deux la place de la précédente, dans le sens
+le plus long. Glisser une fenêtre sur une autre échange leurs places, sur un autre écran l'y fait passer ; un
+redimensionnement à la main est annulé. Restent libres : boîtes de dialogue, fenêtres non redimensionnables ou
+toujours au-dessus, fenêtres agrandies à la main, et **tout jeu** (plein écran, ou dossiers Riot Games, Steam, Epic
+Games, Vanguard). Le pavage s'arrête pendant un jeu en plein écran. Les fenêtres **glissent** vers leur place (0,22 s,
+décélération, section 11). La fenêtre active porte un **contour `--accent`** (bordure de Windows 11, 1 px), les autres
+gardent celui de Windows. **Le focus suit la souris** : la fenêtre d'appli sous le curseur devient active dès que la
+souris s'y pose (pas en la traversant, pas sans mouvement de souris, pas bouton enfoncé, jamais aux dépens d'un
+jeu ni d'un menu ou du lanceur). Les coins des applis restent ceux de Windows (8) : Windows ne permet pas d'en changer le
+rayon sans injection ; avec 10 de marge, ils sont concentriques aux coins de 18 du cadre.
+
+**Barre** — verticale, collée au bord gauche, pleine hauteur, largeur 48. Révélée quand le curseur touche le bord
+gauche. Elle **remplace la barre des tâches de Windows**, masquée tant qu'Azuria tourne et rendue à sa sortie.
+De haut en bas :
+
+- le logo Azuria (ouvre le lanceur) ;
+- les bureaux, empilés (32 × 32, rayon 9, SemiBold ; actif : fond `--accent-soft`, texte `--accent`) ;
+- les **applis ouvertes** (icône 24 dans un bouton 40, rayon 11, nom en infobulle) ; celle au premier plan prend le
+  fond `--accent-soft` et un repère `--accent` de 3 au bord gauche. Un clic l'active, un clic sur celle au premier
+  plan la réduit ;
+- l'heure en vertical (heures au-dessus des minutes, Barlow Condensed) et la date courte ;
+- les icônes d'état (réseau, son, batterie) ;
+- le bouton de session (prend `--danger` au survol seulement). En attendant l'écran de session, il quitte Azuria.
+- Séparateurs horizontaux 24 × 1 en `--border-strong` entre les groupes.
+
+**Tableau de bord** — tiroir collé au bord haut, centré, rayon 18, largeur 640 (720 au plus). Il descend quand le
+curseur touche le haut d'un écran, **sur cet écran**. Un contrôle segmenté en tête, quatre onglets :
 
 - **Accueil** : utilisateur, horloge en grand, calendrier, aperçu météo, média en cours.
 - **Média** : pochette, titre, progression, commandes ; sortie audio.
 - **Performances** : processeur, carte graphique, mémoire, disques, réseau, batterie.
 - **Météo** : conditions actuelles, prévisions par heure et par jour.
 
-**Panneau gauche** — lanceur et applications. Hauteur de l'écran sous la barre, largeur 380, rayon 18. Champ de
-recherche en tête (il a le focus à l'ouverture), puis les applications épinglées et la liste complète. La même
-recherche trouve les applications, les fichiers, les réglages et les actions (éteindre, verrouiller…).
-S'ouvre aussi par la touche Windows.
+**Lanceur** — tiroir collé au bas de la zone de travail (au-dessus de la barre des tâches de Windows), centré,
+largeur 560, rayon 18. S'ouvre par le logo Azuria de la barre ou la **touche Windows** (seule, ou Ctrl+Échap), qui
+n'ouvre plus le menu Démarrer ; les raccourcis Win + touche restent ceux de Windows, et pendant un jeu en plein
+écran la touche retrouve son comportement normal. Il s'ouvre sur l'écran du curseur ; pas d'ouverture au survol, le bas de l'écran étant pris par la barre des tâches. Les applications et les jeux
+sont listés **une ligne pleine largeur chacun** (hauteur 48, icône 32, nom en SemiBold 13, sous-titre `--text-3`
+11 : « Application » ou « Jeu · Steam / Epic Games / Riot Games »), et le **champ de recherche est en bas**, contre
+le cadre d'où sort le tiroir (focus à l'ouverture). Les résultats se posent juste au-dessus du champ ; le premier
+est l'élément courant. **Sa hauteur suit le nombre de résultats** (380 au plus) : le verre se rétracte vers le champ
+en 0,14 s. ↑ ↓ pour choisir, Entrée ou clic pour lancer. Les **jeux installés** (Steam, Epic Games,
+Riot Games) sont lancés par leur launcher, qui s'ouvre en arrière-plan. La même recherche trouvera plus tard les
+fichiers, les réglages et les actions (éteindre, verrouiller…). Se range sur Échap ou au clic ailleurs.
 
-**Panneau droit** — notifications et réglages rapides. Mêmes dimensions. En haut les réglages rapides (Wi-Fi,
-Bluetooth, mode jeu, ne pas déranger, curseurs de volume et de luminosité), en dessous les notifications
-groupées par application, avec « tout effacer ».
+**Panneau droit** — notifications et réglages rapides. Tiroir collé au bord droit, pleine hauteur, largeur 200,
+révélé quand le curseur touche le bord droit. En haut les réglages rapides (Wi-Fi, Bluetooth, mode jeu, ne pas
+déranger, curseurs de volume et de luminosité), en dessous les notifications groupées par application, avec
+« tout effacer ».
 
-**Notification** — apparaît en haut à droite, sous la barre : largeur 360, rayon 14. Icône, titre Bold, texte
+**Notification** — apparaît en haut à droite : largeur 360, rayon 14. Icône, titre Bold, texte
 `--text-2`, actions en boutons compacts. Disparaît après 5 s et reste dans le panneau droit.
 
 **Volume, luminosité** — pastille en bas au centre, rayon 14 : icône, barre de niveau en `--accent`, valeur en
@@ -221,7 +258,8 @@ ouvrir un terminal ni les réglages de Windows.
 **Menus et infobulles** — verre plein, rayon 12, marge intérieure 4, largeur minimale 170. Item : rayon 8,
 `--text-2`, survol `--hover` + `--text`. Coche en `--accent`. Item indisponible à 40 %.
 
-Un seul panneau ouvert à la fois par côté. Un clic en dehors ou Échap le referme.
+Un seul tiroir ouvert à la fois par bord. Un tiroir révélé au survol se range quand le curseur s'en éloigne ; un
+tiroir ouvert sur commande (lanceur) se range sur Échap ou au clic ailleurs.
 
 ## 10. Composants
 
@@ -259,7 +297,9 @@ Le but : que tout paraisse immédiat et doux. Une transition se remarque à pein
 | Ouverture d'un panneau, d'une notification | 0,20 s | fondu + glissé de 12 depuis son bord             |
 | Fermeture                               | 0,14 s | l'inverse                                           |
 | Changement d'onglet, item de segmenté   | 0,18 s | l'indicateur glisse, le contenu se fond             |
-| Fenêtre qui change de place (pavage)    | 0,18 s | glissé                                              |
+| Fenêtre qui change de place (pavage)    | 0,22 s | glissé                                              |
+| Lanceur : résultats filtrés             | 0,24 s | les lignes restées glissent, les autres en fondu (0,14 s) |
+| Lanceur : hauteur selon les résultats   | 0,28 s | le verre et le découpage du contenu suivent         |
 | Changement d'accent ou d'encre          | 0,30 s | fondu des couleurs                                  |
 
 - Une seule courbe d'entrée, en décélération : `cubic-bezier(0.2, 0, 0, 1)`. Sortie : `cubic-bezier(0.3, 0, 1, 1)`.
@@ -294,8 +334,8 @@ plutôt qu'une limite de Windows. À **re-vérifier devant l'écran physique** (
 
 | Cible                                               | Attendu sur Windows 11                                              | Constaté (prototype, 11 nov. 2026)                                                                 |
 | --------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Verre flouté sur le **fond d'écran**, rayon libre   | Possible pour nos fenêtres ; **premier prototype à faire**          | **Oui.** Acrylic DWM floute le fond d'écran ; rayon libre 14→30 via `SetWindowRgn` (coins crénelés, non lissés) |
-| Verre flouté sur les **fenêtres d'autres applis derrière** | (implicite dans la DA §6)                                    | **Non reproduit ici** (Acrylic, blur-behind, HostBackdrop : aucun). Suspect Parsec → à juger sur l'écran physique |
+| Verre flouté sur le **fond d'écran**, rayon libre   | Possible pour nos fenêtres ; **premier prototype à faire**          | **Oui.** Acrylic DWM floute le fond d'écran ; rayon libre 14→30 via `SetWindowRgn` (coins crénelés, non lissés). **13 nov. :** dans le shell, l'Acrylic DWM ignore la région (congés remplis en rectangle) et devient gris plat sur une fenêtre jamais active. **Solution retenue :** flou composé par nous (`CreateHostBackdropBrush` + `DWMWA_USE_HOSTBACKDROPBRUSH`), découpé par une géométrie Direct2D (`IGeometrySource2DInterop`) : forme libre, congés concaves, bords lissés |
+| Verre flouté sur les **fenêtres d'autres applis derrière** | (implicite dans la DA §6)                                    | **Non reproduit ici** (Acrylic, blur-behind, HostBackdrop : aucun). Suspect Parsec → à juger sur l'écran physique. **13 nov., portable sans Parsec** (Radeon intégrée + RTX 3060) : **Oui**, une autre appli derrière la barre est floutée |
 | Flou fluide pendant un glissé de panneau            | À mesurer, y compris sur carte graphique intégrée                   | **Fluide** sur RX 6600 : ~8 ms/image, 0 image > 20 ms (glissé 100 px/0,2 s et 300 px/1 s). iGPU non testable ici |
 | Bordure d'accent sur la fenêtre active              | Possible : Windows laisse choisir la couleur de bordure             | **Non** pour une fenêtre d'une **autre** appli : `DWMWA_BORDER_COLOR` renvoie S_OK mais est ignoré. OK pour nos propres fenêtres |
 | Rayon des fenêtres des applications                 | Imposé par Windows (environ 8) ; on ne le change pas                | Non testé (hors prototype)                                                                          |
@@ -305,6 +345,7 @@ plutôt qu'une limite de Windows. À **re-vérifier devant l'écran physique** (
 | Pavage, écarts, bureaux                             | Possible, par un gestionnaire de fenêtres en espace utilisateur     | Non testé (hors prototype)                                                                          |
 | Animations d'ouverture et de fermeture des fenêtres | Celles de Windows                                                   | Non testé (hors prototype)                                                                          |
 | Écran de verrouillage                               | Celui de Windows                                                    | Non testé (hors prototype)                                                                          |
+| Barre des tâches de Windows retirée, applis ouvertes dans la barre | Possible sans injection                 | **Oui** (13 nov.) : masquage auto (`ABM_SETSTATE`) + fenêtre de la barre cachée ; liste des fenêtres par `EnumWindows` + shell hook, activation par `SetForegroundWindow`. Tout est rendu à la sortie (bouton d'alimentation, `Azuria.exe --quitter`, fin de session) |
 
 ## 14. Checklist avant de livrer une UI
 

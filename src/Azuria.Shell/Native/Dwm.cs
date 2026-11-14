@@ -9,6 +9,7 @@ namespace Azuria.Shell.Native;
 /// </summary>
 internal static class Dwm
 {
+    private const uint DWMWA_USE_HOSTBACKDROPBRUSH = 17;
     private const uint DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const uint DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const uint DWMWA_SYSTEMBACKDROP_TYPE = 38;
@@ -48,6 +49,14 @@ internal static class Dwm
     {
         var m = new MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
         DwmExtendFrameIntoClientArea(hwnd, ref m);
+    }
+
+    /// <summary>Autorise le pinceau « host backdrop » de Windows.UI.Composition sur cette fenêtre
+    /// (flou de ce qui est derrière, composé par nous). Sans ça, le pinceau ne dessine rien.</summary>
+    public static void EnableHostBackdrop(nint hwnd)
+    {
+        int v = 1;
+        DwmSetWindowAttribute(hwnd, DWMWA_USE_HOSTBACKDROPBRUSH, ref v, sizeof(int));
     }
 
     public static void SetCorner(nint hwnd, Corner corner)
