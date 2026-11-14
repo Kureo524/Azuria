@@ -194,7 +194,10 @@ la deuxième la partage en deux, côte à côte ; chaque nouvelle coupe en deux 
 le plus long. Glisser une fenêtre sur une autre échange leurs places, sur un autre écran l'y fait passer ; un
 redimensionnement à la main est annulé. Restent libres : boîtes de dialogue, fenêtres non redimensionnables ou
 toujours au-dessus, fenêtres agrandies à la main, et **tout jeu** (plein écran, ou dossiers Riot Games, Steam, Epic
-Games, Vanguard). Le pavage s'arrête pendant un jeu en plein écran.
+Games, Vanguard). Le pavage s'arrête pendant un jeu en plein écran. Les fenêtres **glissent** vers leur place (0,22 s,
+décélération, section 11). La fenêtre active porte un **contour `--accent`** (bordure de Windows 11, 1 px), les autres
+gardent celui de Windows. Les coins des applis restent ceux de Windows (8) : Windows ne permet pas d'en changer le
+rayon sans injection ; avec 10 de marge, ils sont concentriques aux coins de 18 du cadre.
 
 **Barre** — verticale, collée au bord gauche, pleine hauteur, largeur 56. Révélée quand le curseur touche le bord
 gauche. Elle **remplace la barre des tâches de Windows**, masquée tant qu'Azuria tourne et rendue à sa sortie.
