@@ -230,7 +230,8 @@ n'ouvre plus le menu Démarrer ; les raccourcis Win + touche restent ceux de Win
 sont listés **une ligne pleine largeur chacun** (hauteur 48, icône 32, nom en SemiBold 13, sous-titre `--text-3`
 11 : « Application » ou « Jeu · Steam / Epic Games / Riot Games »), et le **champ de recherche est en bas**, contre
 le cadre d'où sort le tiroir (focus à l'ouverture). Les résultats se posent juste au-dessus du champ ; le premier
-est l'élément courant. ↑ ↓ pour choisir, Entrée ou clic pour lancer. Les **jeux installés** (Steam, Epic Games,
+est l'élément courant. **Sa hauteur suit le nombre de résultats** (380 au plus) : le verre se rétracte vers le champ
+en 0,14 s. ↑ ↓ pour choisir, Entrée ou clic pour lancer. Les **jeux installés** (Steam, Epic Games,
 Riot Games) sont lancés par leur launcher, qui s'ouvre en arrière-plan. La même recherche trouvera plus tard les
 fichiers, les réglages et les actions (éteindre, verrouiller…). Se range sur Échap ou au clic ailleurs.
 
