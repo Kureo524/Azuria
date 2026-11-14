@@ -29,6 +29,7 @@ internal sealed class Tiler : IDisposable
     private const int OuterGap = 10;
     private const int InnerGap = 10;
 
+    private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     private const uint EVENT_SYSTEM_MOVESIZESTART = 0x000A, EVENT_SYSTEM_MOVESIZEEND = 0x000B;
     private const uint EVENT_SYSTEM_MINIMIZESTART = 0x0016, EVENT_SYSTEM_MINIMIZEEND = 0x0017;
     private const uint EVENT_OBJECT_DESTROY = 0x8001, EVENT_OBJECT_SHOW = 0x8002, EVENT_OBJECT_HIDE = 0x8003;
@@ -64,6 +65,8 @@ internal sealed class Tiler : IDisposable
     [DllImport("user32.dll")] private static extern bool EnumWindows(EnumProc proc, nint lParam);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint h, out uint pid);
     [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(nint h, uint attr, out RECT value, int size);
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(nint h, uint attr, ref uint value, int size);
+    [DllImport("user32.dll")] private static extern nint GetForegroundWindow();
     [DllImport("kernel32.dll")] private static extern nint OpenProcess(uint access, bool inherit, uint pid);
     [DllImport("kernel32.dll")] private static extern bool CloseHandle(nint h);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool QueryFullProcessImageName(nint p, int flags, StringBuilder s, ref int size);
@@ -84,6 +87,9 @@ internal sealed class Tiler : IDisposable
     private readonly System.Windows.Forms.Timer _debounce = new() { Interval = 80 };
     private readonly System.Windows.Forms.Timer _settle = new() { Interval = 600 };
     private nint _dragged;
+    private nint _focused;   // fenêtre qui porte le contour
+    private int _generation; // pavage en cours d'animation
+    private bool _disposed;
     private bool _suspended;
 
     public Tiler()
@@ -99,6 +105,7 @@ internal sealed class Tiler : IDisposable
         uint flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
         foreach (var (min, max) in new[]
         {
+            (EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND),
             (EVENT_SYSTEM_MOVESIZESTART, EVENT_SYSTEM_MOVESIZEEND),
             (EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND),
             (EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE),
@@ -112,6 +119,7 @@ internal sealed class Tiler : IDisposable
         // Les fenêtres déjà ouvertes rejoignent le pavage, comme si elles venaient d'arriver.
         EnumWindows((h, _) => { _candidates.Add(h); return true; }, 0);
         Reconcile();
+        Focus(GetForegroundWindow()); // contour sur la fenêtre déjà active
     }
 
     /// <summary>Vrai pendant un jeu en plein écran : on ne touche à aucune fenêtre.</summary>
@@ -123,6 +131,7 @@ internal sealed class Tiler : IDisposable
             if (_suspended == value) return;
             _suspended = value;
             if (!value) Schedule();
+            else Focus(0); // pendant un jeu, plus de contour non plus
         }
     }
 
@@ -146,6 +155,9 @@ internal sealed class Tiler : IDisposable
                 if (_order.Contains(hwnd)) return;
                 _candidates.Add(hwnd);
                 break;
+            case EVENT_SYSTEM_FOREGROUND:
+                Focus(hwnd); // contour tout de suite, sans attendre
+                return;
             case EVENT_SYSTEM_MOVESIZESTART:
                 return;
             case EVENT_SYSTEM_MOVESIZEEND:
@@ -213,6 +225,7 @@ internal sealed class Tiler : IDisposable
     private void Apply()
     {
         if (_suspended) return;
+        var moves = new List<(nint H, Rectangle From, Rectangle To)>();
         foreach (var screen in Screen.AllScreens)
         {
             var windows = _order.Where(h => _screenOf.TryGetValue(h, out var s) && s == screen.DeviceName
@@ -221,8 +234,45 @@ internal sealed class Tiler : IDisposable
             int outer = Monitors.Scale(screen, OuterGap), inner = Monitors.Scale(screen, InnerGap);
             var area = Rectangle.Inflate(Monitors.WorkArea(screen), -outer, -outer);
             var rects = Dwindle(area, windows.Count, inner);
-            for (int k = 0; k < windows.Count; k++) Place(windows[k], rects[k]);
+            for (int k = 0; k < windows.Count; k++)
+            {
+                var h = windows[k];
+                if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
+                _tiles[h] = rects[k];
+                var from = Visible(h);
+                if (from is Rectangle f && f != rects[k]) moves.Add((h, f, rects[k]));
+            }
         }
+        if (moves.Count > 0) Animate(moves);
+    }
+
+    /// <summary>
+    /// Les fenêtres glissent vers leur nouvelle place (DA §11 : 0,22 s, décélération), toutes en même
+    /// temps, cadencées par DWM. Un nouveau pavage en cours de route reprend depuis la position atteinte.
+    /// </summary>
+    private async void Animate(List<(nint H, Rectangle From, Rectangle To)> moves)
+    {
+        int gen = ++_generation;
+        const double dur = 220;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.Elapsed.TotalMilliseconds < dur)
+        {
+            double e = Easing.In(sw.Elapsed.TotalMilliseconds / dur);
+            foreach (var (h, f, t) in moves)
+                Place(h, Rectangle.FromLTRB(Easing.Lerp(f.Left, t.Left, e), Easing.Lerp(f.Top, t.Top, e),
+                                            Easing.Lerp(f.Right, t.Right, e), Easing.Lerp(f.Bottom, t.Bottom, e)));
+            await Task.Run(Dwm.Flush);
+            if (gen != _generation || _disposed) return; // remplacé par un pavage plus récent
+        }
+        foreach (var (h, _, t) in moves) Place(h, t);
+    }
+
+    // Rectangle visible de la fenêtre (sans la bordure invisible de Windows 11).
+    private static Rectangle? Visible(nint h)
+    {
+        if (DwmGetWindowAttribute(h, DWMWA_EXTENDED_FRAME_BOUNDS, out var fr, Marshal.SizeOf<RECT>()) == 0)
+            return Rectangle.FromLTRB(fr.Left, fr.Top, fr.Right, fr.Bottom);
+        return GetWindowRect(h, out var wr) ? Rectangle.FromLTRB(wr.Left, wr.Top, wr.Right, wr.Bottom) : null;
     }
 
     /// <summary>Chaque fenêtre prend la moitié de la place restante, coupée dans le sens le plus long.</summary>
@@ -251,10 +301,8 @@ internal sealed class Tiler : IDisposable
 
     // Place la partie visible de la fenêtre sur le rectangle : Windows 11 entoure les fenêtres d'une
     // bordure de redimensionnement invisible, qu'on compense (DWMWA_EXTENDED_FRAME_BOUNDS).
-    private void Place(nint h, Rectangle r)
+    private static void Place(nint h, Rectangle r)
     {
-        if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
-        _tiles[h] = r;
         if (!GetWindowRect(h, out var wr)) return;
         int l = 0, t = 0, ri = 0, b = 0;
         if (DwmGetWindowAttribute(h, DWMWA_EXTENDED_FRAME_BOUNDS, out var fr, Marshal.SizeOf<RECT>()) == 0)
@@ -265,6 +313,28 @@ internal sealed class Tiler : IDisposable
         int x = r.X - l, y = r.Y - t, w = r.Width + l + ri, hh = r.Height + t + b;
         if (wr.Left == x && wr.Top == y && wr.Right - wr.Left == w && wr.Bottom - wr.Top == hh) return;
         SetWindowPos(h, 0, x, y, w, hh, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS);
+    }
+
+    // ----- contour de la fenêtre active -----
+
+    // DA §3 : --accent #8fa4cc, en COLORREF (0x00BBGGRR). À brancher sur le réglage d'accent plus tard.
+    private const uint AccentBorder = 0x00CCA48F;
+    private const uint DWMWA_BORDER_COLOR = 34, DWMWA_COLOR_DEFAULT = 0xFFFFFFFF;
+
+    /// <summary>
+    /// La fenêtre d'appli au premier plan prend un contour couleur d'accent ; la précédente retrouve
+    /// celui de Windows. Couleur de bordure de DWM (Windows 11) : anti-aliasé, suit les coins de la
+    /// fenêtre, rien n'est dessiné par-dessus. Jamais sur un jeu.
+    /// </summary>
+    private void Focus(nint h)
+    {
+        if (h != 0 && (_suspended || _disposed || !OpenWindows.IsAppWindow(h) || IsGame(h))) h = 0;
+        if (h == _focused) return;
+        if (_focused != 0 && IsWindow(_focused)) Border(_focused, DWMWA_COLOR_DEFAULT);
+        _focused = h;
+        if (h != 0) Border(h, AccentBorder);
+
+        static void Border(nint w, uint color) => DwmSetWindowAttribute(w, DWMWA_BORDER_COLOR, ref color, sizeof(uint));
     }
 
     // ----- règles -----
@@ -310,6 +380,8 @@ internal sealed class Tiler : IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
+        Focus(0);
         foreach (var h in _hooks) UnhookWinEvent(h);
         _hooks.Clear();
         _debounce.Dispose();

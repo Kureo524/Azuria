@@ -348,9 +348,9 @@ internal class GlassWindow : Form
                 double t = sw.Elapsed.TotalMilliseconds;
                 if (t >= dur) break;
                 double p = t / dur;
-                double e = shown ? Bezier(0.2, 0, 0, 1, p)   // entrée : décélération
-                                 : Bezier(0.3, 0, 1, 1, p);  // sortie : accélération
-                SetWindowPos(Handle, 0, Lerp(from.X, to.X, e), Lerp(from.Y, to.Y, e), 0, 0,
+                double e = shown ? Easing.In(p)    // entrée : décélération
+                                 : Easing.Out(p);  // sortie : accélération
+                SetWindowPos(Handle, 0, Easing.Lerp(from.X, to.X, e), Easing.Lerp(from.Y, to.Y, e), 0, 0,
                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
                 Track();
                 await Task.Run(Dwm.Flush); // la boucle de messages tourne : le verre part avec la page
@@ -371,28 +371,6 @@ internal class GlassWindow : Form
             _web.Focus();
             _web.CoreWebView2?.PostWebMessageAsString("shown");
         }
-    }
-
-    private static int Lerp(int a, int b, double t) => (int)Math.Round(a + (b - a) * t);
-
-    // Courbe de Bézier cubique (x->y) résolue par Newton, comme en CSS.
-    private static double Bezier(double x1, double y1, double x2, double y2, double x)
-    {
-        x = Math.Clamp(x, 0, 1);
-        double t = x;
-        for (int i = 0; i < 6; i++)
-        {
-            double xt = Bez(x1, x2, t) - x;
-            double dxt = BezD(x1, x2, t);
-            if (Math.Abs(dxt) < 1e-6) break;
-            t = Math.Clamp(t - xt / dxt, 0, 1);
-        }
-        return Bez(y1, y2, t);
-
-        static double Bez(double a, double b, double t) =>
-            3 * (1 - t) * (1 - t) * t * a + 3 * (1 - t) * t * t * b + t * t * t;
-        static double BezD(double a, double b, double t) =>
-            3 * (1 - t) * (1 - t) * a + 6 * (1 - t) * t * (b - a) + 3 * t * t * (1 - b);
     }
 
     // ----- messages système -----
