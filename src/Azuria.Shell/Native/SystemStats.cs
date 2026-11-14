@@ -90,16 +90,18 @@ internal sealed class SystemStats : IDisposable
         double down = Math.Max(0, (rx - _rx) / dt), up = Math.Max(0, (tx - _tx) / dt);
         (_rx, _tx, _netAt) = (rx, tx, now);
 
-        int? battery = null;
-        bool charging = false;
-        if (GetSystemPowerStatus(out var p) && (p.BatteryFlag & 128) == 0 && p.BatteryLifePercent <= 100)
-        {
-            battery = p.BatteryLifePercent;
-            charging = p.ACLineStatus == 1;
-        }
+        var (battery, charging) = Battery();
 
         return new Stats(Math.Clamp(cpu, 0, 100), Gpu(), mem.TotalPhys - mem.AvailPhys, mem.TotalPhys,
             root.TrimEnd('\\'), diskUsed, diskTotal, down, up, battery, charging, Environment.TickCount64 / 1000);
+    }
+
+    /// <summary>Batterie : pourcentage et charge en cours ; null sans batterie (PC fixe).</summary>
+    public static (int? Percent, bool Charging) Battery()
+    {
+        if (GetSystemPowerStatus(out var p) && (p.BatteryFlag & 128) == 0 && p.BatteryLifePercent <= 100)
+            return (p.BatteryLifePercent, p.ACLineStatus == 1);
+        return (null, false);
     }
 
     private double? Gpu()
