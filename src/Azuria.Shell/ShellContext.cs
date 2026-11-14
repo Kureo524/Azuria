@@ -18,6 +18,7 @@ internal sealed class ShellContext : ApplicationContext
     private readonly Taskbar? _taskbar;
     private readonly OpenWindows? _apps;
     private readonly StartKey? _startKey;
+    private readonly Catalog _catalog;
     private readonly System.Windows.Forms.Timer _fullScreenWatch = new() { Interval = 250 };
 
     public ShellContext()
@@ -60,6 +61,20 @@ internal sealed class ShellContext : ApplicationContext
                 SendApps(bar);
             }
         };
+
+        // Le lanceur liste les applis du menu Démarrer et les jeux installés (Steam, Epic, Riot).
+        _catalog = new Catalog();
+        _catalog.Changed += () => SendCatalog(launcher);
+        launcher.PresenceChanged += (_, present) => { if (present) _catalog.Refresh(TimeSpan.FromSeconds(30)); };
+        launcher.MessageReceived += msg =>
+        {
+            if (msg == "apps") SendCatalog(launcher);                  // la page est prête
+            else if (msg.StartsWith("launch:"))
+            {
+                if (_catalog.Launch(msg[7..])) launcher.Conceal();
+            }
+        };
+        _catalog.Refresh(TimeSpan.Zero);
 
         foreach (var w in new GlassWindow[] { bar, dashboard, sidebar, launcher })
         {
@@ -111,6 +126,13 @@ internal sealed class ShellContext : ApplicationContext
         if (_apps is null) return;
         var items = _apps.List().Select(w => new { id = (long)w.Handle, title = w.Title, icon = w.Icon, active = w.Active });
         bar.PostJson(JsonSerializer.Serialize(new { type = "apps", items }));
+    }
+
+    // Le catalogue du lanceur (les icônes sont des URL vers le cache, la page dessine le reste).
+    private void SendCatalog(GlassWindow launcher)
+    {
+        var items = _catalog.Entries.Select(e => new { id = e.Id, name = e.Name, sub = e.Sub, icon = e.Icon, game = e.Game });
+        launcher.PostJson(JsonSerializer.Serialize(new { type = "apps", items }));
     }
 
     // Le verre d'un tiroir est dessiné par la surface de son écran, et seulement elle.

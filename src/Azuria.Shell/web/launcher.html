@@ -6,10 +6,40 @@
   <title>Azuria — lanceur</title>
   <link rel="stylesheet" href="encre.css">
   <style>
-    /* Lanceur (DA §9) : recherche en tête, applications en grille. Contenu factice. */
-    .launch { display: flex; flex-direction: column; gap: 14px; padding: 18px 16px 14px; }
+    /* Lanceur (DA §9) : une ligne pleine largeur par appli ou jeu, recherche en bas, contre le cadre
+       d'où sort le tiroir. La liste vient du C# (menu Démarrer + jeux Steam, Epic, Riot). */
+    .launch { display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 14px; }
 
-    /* Champ de recherche des panneaux : 36 de haut (DA §10) */
+    .list {
+      flex: 1 1 auto; min-height: 0; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    /* Peu de résultats : ils se posent juste au-dessus du champ. */
+    .list::before { content: ""; flex: 1 1 auto; }
+    .list::-webkit-scrollbar { width: 6px; }
+    .list::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 3px; }
+
+    /* Ligne de liste (DA §10) : rayon 10, survol --hover, élément courant --accent-soft. */
+    .row {
+      display: flex; align-items: center; gap: 12px; flex: 0 0 auto;
+      height: 48px; padding: 0 12px; border-radius: 10px;
+      transition: background var(--dur-hover) var(--ease-in);
+    }
+    .row:hover { background: var(--hover); }
+    .row.sel { background: var(--accent-soft); }
+    .ic { width: 32px; height: 32px; flex: 0 0 auto; object-fit: contain; }
+    .ic.letter {
+      border-radius: 8px; background: var(--surface-raised); border: 1px solid var(--border);
+      display: grid; place-items: center; color: var(--text-2); font-weight: 700; font-size: 14px;
+    }
+    .txt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .name { font-size: 13px; font-weight: 600; color: var(--text);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row.sel .name { color: var(--accent-text); }
+    .sub { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+    .empty { text-align: center; color: var(--text-3); font-size: 12px; padding: 24px 0; flex: 0 0 auto; }
+
+    /* Champ de recherche des panneaux : 36 de haut (DA §10). */
     .search {
       display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
       height: 36px; padding: 0 12px;
@@ -23,65 +53,109 @@
       color: var(--text); font: 12px var(--font);
     }
     .search input::placeholder { color: var(--text-3); }
-
-    .grid {
-      display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
-      overflow-y: auto; align-content: start; flex: 1 1 auto;
-    }
-    .grid::-webkit-scrollbar { width: 6px; }
-    .grid::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 3px; }
-    .tile {
-      display: flex; flex-direction: column; align-items: center; gap: 6px;
-      padding: 10px 4px; border-radius: 12px;
-      transition: background var(--dur-hover) var(--ease-in);
-    }
-    .tile:hover, .tile.sel { background: var(--hover); }
-    .ic {
-      width: 44px; height: 44px; border-radius: 12px;
-      background: var(--surface-raised); border: 1px solid var(--border);
-      display: grid; place-items: center; color: var(--text-2);
-      font-weight: 700; font-size: 16px; line-height: 1;
-    }
-    .tile .name { font-size: 11px; color: var(--text-2); text-align: center; line-height: 1.2; }
-    .empty { grid-column: 1 / -1; text-align: center; color: var(--text-3); font-size: 12px; padding: 24px 0; }
   </style>
 </head>
 <body>
   <script src="drawer.js"></script>
   <div class="content launch">
+    <div class="list" id="list"><div class="empty">Chargement…</div></div>
     <div class="search">
       <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
-      <input id="q" placeholder="Rechercher une application…" autocomplete="off" spellcheck="false">
+      <input id="q" placeholder="Rechercher une application ou un jeu…" autocomplete="off" spellcheck="false">
     </div>
-    <div class="grid" id="grid"></div>
   </div>
 
   <script>
-    // Applications factices — la vraie liste viendra du C# (menu Démarrer, raccourcis).
-    const apps = ['Navigateur', 'Fichiers', 'Terminal', 'Réglages', 'Musique', 'Photos', 'Discord',
-                  'Code', 'Appareil photo', 'Calculatrice', 'Calendrier', 'Courrier', 'Horloge',
-                  'Lecteur vidéo', 'Météo', 'Notes', 'Store'];
-    const q = document.getElementById('q'), grid = document.getElementById('grid');
+    const view = window.chrome?.webview;
+    const q = document.getElementById('q'), list = document.getElementById('list');
     const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    let apps = null;   // [{ id, name, sub, icon, game, key }]
+    let shown = [];    // résultats affichés
+    let sel = 0;
+
+    // Pertinence : début du nom, puis début d'un mot, puis n'importe où, puis le sous-titre (« steam »…).
+    function score(a, term) {
+      if (!term) return 0;
+      if (a.key.startsWith(term)) return 0;
+      if (a.key.split(/[\s\-_.:]+/).some(w => w.startsWith(term))) return 1;
+      if (a.key.includes(term)) return 2;
+      if (norm(a.sub).includes(term)) return 3;
+      return -1;
+    }
 
     function render() {
+      if (!apps) return;
       const term = norm(q.value.trim());
-      const list = apps.filter(a => norm(a).includes(term));
-      grid.innerHTML = list.length
-        ? list.map((a, i) => `<div class="tile${i === 0 && term ? ' sel' : ''}"><div class="ic">${a[0]}</div><div class="name">${a}</div></div>`).join('')
+      shown = apps.map(a => [score(a, term), a]).filter(([s]) => s >= 0)
+                  .sort((x, y) => x[0] - y[0] || x[1].name.localeCompare(y[1].name, 'fr'))
+                  .map(([, a]) => a);
+      sel = 0;
+      list.innerHTML = shown.length
+        ? shown.map((a, i) => `
+          <div class="row${i === sel ? ' sel' : ''}" data-i="${i}">
+            ${a.icon ? `<img class="ic" src="${esc(a.icon)}" alt="">` : `<div class="ic letter">${esc(a.name[0] || '?')}</div>`}
+            <div class="txt"><div class="name">${esc(a.name)}</div><div class="sub">${esc(a.sub)}</div></div>
+          </div>`).join('')
         : '<div class="empty">Aucun résultat</div>';
+      list.scrollTop = 0;
     }
-    q.addEventListener('input', render);
-    render();
 
-    // Échap : on range le lanceur (géré par le C#).
+    function select(i) {
+      if (!shown.length) return;
+      sel = Math.max(0, Math.min(shown.length - 1, i));
+      list.querySelectorAll('.row').forEach(r => r.classList.toggle('sel', +r.dataset.i === sel));
+      list.querySelector('.row.sel')?.scrollIntoView({ block: 'nearest' });
+    }
+
+    function launch(i) {
+      const a = shown[i];
+      if (a) view?.postMessage('launch:' + a.id);
+    }
+
+    q.addEventListener('input', render);
+    list.addEventListener('mousemove', e => {
+      const r = e.target.closest('.row');
+      if (r && +r.dataset.i !== sel) select(+r.dataset.i);
+    });
+    list.addEventListener('click', e => {
+      const r = e.target.closest('.row');
+      if (r) launch(+r.dataset.i);
+    });
+    // Icône illisible : on garde l'initiale.
+    list.addEventListener('error', e => {
+      const img = e.target;
+      if (img.tagName !== 'IMG') return;
+      const d = document.createElement('div');
+      d.className = 'ic letter';
+      d.textContent = img.closest('.row')?.querySelector('.name')?.textContent[0] || '?';
+      img.replaceWith(d);
+    }, true);
+
     addEventListener('keydown', e => {
-      if (e.key === 'Escape') window.chrome?.webview?.postMessage('close');
+      const page = Math.max(1, Math.floor(list.clientHeight / 50));
+      switch (e.key) {
+        case 'Escape': view?.postMessage('close'); break;                // range le lanceur (C#)
+        case 'ArrowDown': select(sel + 1); break;
+        case 'ArrowUp': select(sel - 1); break;
+        case 'PageDown': select(sel + page); break;
+        case 'PageUp': select(sel - page); break;
+        case 'Enter': launch(sel); break;
+        default: return;
+      }
+      e.preventDefault();
     });
-    // À chaque ouverture : recherche vide, focus dans le champ.
-    window.chrome?.webview?.addEventListener('message', e => {
-      if (e.data === 'shown') { q.value = ''; render(); q.focus(); }
+
+    view?.addEventListener('message', e => {
+      // À chaque ouverture : recherche vide, focus dans le champ.
+      if (e.data === 'shown') { q.value = ''; render(); q.focus(); return; }
+      if (e.data?.type === 'apps') {
+        apps = e.data.items.map(a => ({ ...a, key: norm(a.name) }));
+        render();
+      }
     });
+    view?.postMessage('apps'); // demande la liste
   </script>
 </body>
 </html>

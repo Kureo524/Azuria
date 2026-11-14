@@ -266,6 +266,10 @@ internal class GlassWindow : Form
         string webRoot = Path.Combine(AppContext.BaseDirectory, "web");
         core.SetVirtualHostNameToFolderMapping(
             "azuria.local", webRoot, CoreWebView2HostResourceAccessKind.Allow);
+        // Icônes des applis et des jeux, mises en cache par le catalogue du lanceur.
+        Directory.CreateDirectory(Catalog.IconDir);
+        core.SetVirtualHostNameToFolderMapping(
+            Catalog.IconHost, Catalog.IconDir, CoreWebView2HostResourceAccessKind.Allow);
 
         core.Settings.AreDefaultContextMenusEnabled = false;
         core.Settings.AreBrowserAcceleratorKeysEnabled = false;
