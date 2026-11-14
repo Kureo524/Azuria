@@ -17,6 +17,7 @@ internal sealed class ShellContext : ApplicationContext
     private readonly List<ScreenSurface> _surfaces = new();
     private readonly Taskbar? _taskbar;
     private readonly OpenWindows? _apps;
+    private readonly StartKey? _startKey;
     private readonly System.Windows.Forms.Timer _fullScreenWatch = new() { Interval = 250 };
 
     public ShellContext()
@@ -69,6 +70,11 @@ internal sealed class ShellContext : ApplicationContext
         }
         foreach (var w in _drawers) w.Show();
 
+        // La touche Windows ouvre le lanceur au lieu du menu Démarrer (crochet retiré pendant un jeu).
+        _startKey = new StartKey();
+        _startKey.Pressed += () => { if (!GlassWindow.Suspended) launcher.Toggle(Cursor.Position); };
+        _startKey.Enabled = true;
+
         // Fin de session Windows : on rend la barre des tâches avant de partir.
         SystemEvents.SessionEnding += (_, _) => Shutdown();
     }
@@ -84,6 +90,7 @@ internal sealed class ShellContext : ApplicationContext
         if (_down) return;
         _down = true;
         _fullScreenWatch.Stop();
+        _startKey?.Dispose();
         _apps?.Dispose();
         _taskbar?.Dispose();
         DisposeSurfaces();
@@ -136,9 +143,13 @@ internal sealed class ShellContext : ApplicationContext
         }
     }
 
-    // Une appli en plein écran (un jeu) sur n'importe quel écran : aucun tiroir ne s'ouvre.
-    private void UpdateSuspension() =>
+    // Une appli en plein écran (un jeu) sur n'importe quel écran : aucun tiroir ne s'ouvre, et le
+    // crochet de la touche Windows est retiré (la touche retrouve son comportement de Windows).
+    private void UpdateSuspension()
+    {
         GlassWindow.Suspended = _surfaces.Any(s => s.IsFullScreen);
+        if (_startKey is not null && !_down) _startKey.Enabled = !GlassWindow.Suspended;
+    }
 
     // Écrans branchés, débranchés ou redimensionnés : on reconstruit le verre. Windows envoie aussi
     // cet évènement pour des changements sans effet sur les écrans (barre des tâches masquée…) :
