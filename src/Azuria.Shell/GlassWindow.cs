@@ -182,6 +182,16 @@ internal class GlassWindow : Form
         }
     }
 
+    /// <summary>La forme du verre a changé sans que la taille change (ex. lanceur qui se rétracte).</summary>
+    protected void ShapeChanged()
+    {
+        ShapeVersion++;
+        Track();
+    }
+
+    /// <summary>Change à chaque modification de la forme : la surface de l'écran redessine alors le verre.</summary>
+    public int ShapeVersion { get; private set; }
+
     // Après chaque déplacement : clics limités à la forme, rognée au bord intérieur du cadre (le
     // tiroir en sort), et le verre de l'écran suit (ScreenSurface).
     private void Track()

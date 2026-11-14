@@ -100,6 +100,21 @@
           </div>`).join('')
         : '<div class="empty">Aucun résultat</div>';
       list.scrollTop = 0;
+      fit();
+    }
+
+    // Hauteur du contenu (marges + résultats + champ), annoncée au C# : le verre se rétracte quand il
+    // y a peu de résultats, la hauteur de la fenêtre restant le maximum.
+    const launchEl = document.querySelector('.launch');
+    let lastHeight = -1;
+    function fit() {
+      const cs = getComputedStyle(launchEl), ls = getComputedStyle(list);
+      let rows = 0;
+      for (const c of list.children) rows += c.offsetHeight;
+      rows += Math.max(0, list.children.length - 1) * parseFloat(ls.rowGap || 0);
+      const h = Math.ceil(parseFloat(cs.paddingTop) + rows + parseFloat(cs.rowGap || 0)
+                          + document.querySelector('.search').offsetHeight + parseFloat(cs.paddingBottom));
+      if (h !== lastHeight) { lastHeight = h; view?.postMessage('height:' + h); }
     }
 
     function select(i) {

@@ -20,7 +20,7 @@ internal sealed class ScreenSurface : IDisposable
 
     private readonly SurfaceWindow _window;
     private readonly Dictionary<DrawerEdge, AppBarHost> _bars = new();
-    private readonly Dictionary<GlassWindow, (GlassLayer Layer, Size Size)> _drawers = new();
+    private readonly Dictionary<GlassWindow, (GlassLayer Layer, Size Size, int Version)> _drawers = new();
     private readonly System.Windows.Forms.Timer _debounce = new() { Interval = 300 };
     private readonly System.Windows.Forms.Timer _relayout = new() { Interval = 100 };
     private GlassSurface? _glass;
@@ -128,14 +128,14 @@ internal sealed class ScreenSurface : IDisposable
         if (_glass is null) return;
         if (!_drawers.TryGetValue(drawer, out var d))
         {
-            d = (_glass.AddLayer(Local(_inner), GlassSurface.Tint), Size.Empty);
+            d = (_glass.AddLayer(Local(_inner), GlassSurface.Tint), Size.Empty, -1);
             _drawers[drawer] = d;
         }
-        if (visible && d.Size != drawer.Size)
+        if (visible && (d.Size != drawer.Size || d.Version != drawer.ShapeVersion))
         {
             d.Layer.SetShape(drawer.Shape);
             d.Layer.SetFade(drawer.Size, drawer.AttachedSides, Monitors.Scale(Screen, ShellMetrics.Fade));
-            _drawers[drawer] = d = (d.Layer, drawer.Size);
+            _drawers[drawer] = d = (d.Layer, drawer.Size, drawer.ShapeVersion);
         }
         var at = drawer.Location;
         d.Layer.Place(new Point(at.X - _outer.X, at.Y - _outer.Y), visible && !_fullScreen);
