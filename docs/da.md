@@ -297,7 +297,9 @@ Le but : que tout paraisse immédiat et doux. Une transition se remarque à pein
 | Ouverture d'un panneau, d'une notification | 0,20 s | fondu + glissé de 12 depuis son bord             |
 | Fermeture                               | 0,14 s | l'inverse                                           |
 | Changement d'onglet, item de segmenté   | 0,18 s | l'indicateur glisse, le contenu se fond             |
-| Fenêtre qui change de place (pavage)    | 0,18 s | glissé                                              |
+| Fenêtre qui change de place (pavage)    | 0,22 s | glissé                                              |
+| Lanceur : résultats filtrés             | 0,24 s | les lignes restées glissent, les autres en fondu (0,14 s) |
+| Lanceur : hauteur selon les résultats   | 0,28 s | le verre et le découpage du contenu suivent         |
 | Changement d'accent ou d'encre          | 0,30 s | fondu des couleurs                                  |
 
 - Une seule courbe d'entrée, en décélération : `cubic-bezier(0.2, 0, 0, 1)`. Sortie : `cubic-bezier(0.3, 0, 1, 1)`.
