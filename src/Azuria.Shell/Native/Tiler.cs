@@ -67,6 +67,12 @@ internal sealed class Tiler : IDisposable
     [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(nint h, uint attr, out RECT value, int size);
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(nint h, uint attr, ref uint value, int size);
     [DllImport("user32.dll")] private static extern nint GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern nint WindowFromPoint(POINT p);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint h, uint flags);
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vk);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint h);
+    [DllImport("user32.dll")] private static extern void SwitchToThisWindow(nint h, bool altTab);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(nint h, StringBuilder s, int max);
     [DllImport("kernel32.dll")] private static extern nint OpenProcess(uint access, bool inherit, uint pid);
     [DllImport("kernel32.dll")] private static extern bool CloseHandle(nint h);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool QueryFullProcessImageName(nint p, int flags, StringBuilder s, ref int size);
@@ -86,6 +92,10 @@ internal sealed class Tiler : IDisposable
     private readonly Dictionary<uint, bool> _gamePid = new();
     private readonly System.Windows.Forms.Timer _debounce = new() { Interval = 80 };
     private readonly System.Windows.Forms.Timer _settle = new() { Interval = 600 };
+    private readonly System.Windows.Forms.Timer _hover = new() { Interval = 50 };
+    private nint _hovered;   // fenêtre sous le curseur au tour précédent
+    private POINT _lastCursor;
+    private bool _armed;     // la souris a bougé : le focus peut suivre
     private nint _dragged;
     private nint _focused;   // fenêtre qui porte le contour
     private int _generation; // pavage en cours d'animation
@@ -98,6 +108,7 @@ internal sealed class Tiler : IDisposable
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reconcile(); };
         // Beaucoup d'applis se replacent elles-mêmes juste après s'être affichées : seconde passe.
         _settle.Tick += (_, _) => { _settle.Stop(); Apply(); _fresh.Clear(); };
+        _hover.Tick += (_, _) => FollowMouse();
     }
 
     public void Start()
@@ -120,6 +131,7 @@ internal sealed class Tiler : IDisposable
         EnumWindows((h, _) => { _candidates.Add(h); return true; }, 0);
         Reconcile();
         Focus(GetForegroundWindow()); // contour sur la fenêtre déjà active
+        _hover.Start();               // le focus suit le curseur
     }
 
     /// <summary>Vrai pendant un jeu en plein écran : on ne touche à aucune fenêtre.</summary>
@@ -315,6 +327,60 @@ internal sealed class Tiler : IDisposable
         SetWindowPos(h, 0, x, y, w, hh, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS);
     }
 
+    // ----- le focus suit le curseur -----
+
+    private const int VK_LBUTTON = 0x01, VK_RBUTTON = 0x02, VK_MBUTTON = 0x04;
+    private const uint GA_ROOT = 2;
+
+    // Ce qui peut céder le focus au survol : une appli, ou le bureau. Pas un menu, l'Alt-Tab, le
+    // menu Démarrer de Windows… (ce ne sont pas des fenêtres d'applis).
+    private static readonly HashSet<string> DesktopClasses = new() { "Progman", "WorkerW" };
+
+    /// <summary>
+    /// La fenêtre d'appli sous le curseur prend le focus, après un court arrêt dessus (deux tours de
+    /// 50 ms : la traverser ne l'active pas). Garde-fous : jamais pendant un jeu en plein écran, jamais
+    /// en prenant le focus à un jeu (même fenêtré), jamais bouton de souris enfoncé, jamais quand le
+    /// premier plan est un menu ou une fenêtre d'Azuria (le lanceur où l'on tape).
+    /// </summary>
+    private void FollowMouse()
+    {
+        if (_suspended) { _hovered = 0; return; }
+        if (GetAsyncKeyState(VK_LBUTTON) < 0 || GetAsyncKeyState(VK_RBUTTON) < 0 || GetAsyncKeyState(VK_MBUTTON) < 0)
+        {
+            _hovered = 0;
+            return;
+        }
+        GetCursorPos(out POINT p);
+        // Seul un mouvement de la souris déplace le focus : une appli qui s'ouvre, l'Alt-Tab ou un
+        // raccourci clavier gardent le leur tant que la souris ne bouge pas (comme Hyprland).
+        if (p.X != _lastCursor.X || p.Y != _lastCursor.Y) _armed = true;
+        _lastCursor = p;
+        if (!_armed) return;
+
+        nint under = WindowFromPoint(p);
+        if (under != 0) under = GetAncestor(under, GA_ROOT);
+        bool again = under == _hovered;
+        _hovered = under;
+        if (!again || under == 0) return; // attendre que le curseur se pose
+        _armed = false;
+
+        nint fg = GetForegroundWindow();
+        if (under == fg) return;
+        if (!OpenWindows.IsAppWindow(under) || IsGame(under)) return;
+        if (fg != 0 && !OpenWindows.IsAppWindow(fg) && !DesktopClasses.Contains(ClassOf(fg))) return;
+        if (fg != 0 && IsGame(fg)) return;
+
+        if (!SetForegroundWindow(under) || GetForegroundWindow() != under)
+            SwitchToThisWindow(under, true); // Windows refuse parfois le premier plan à un processus en arrière-plan
+    }
+
+    private static string ClassOf(nint h)
+    {
+        var sb = new StringBuilder(64);
+        GetClassName(h, sb, sb.Capacity);
+        return sb.ToString();
+    }
+
     // ----- contour de la fenêtre active -----
 
     // DA §3 : --accent #8fa4cc, en COLORREF (0x00BBGGRR). À brancher sur le réglage d'accent plus tard.
@@ -386,5 +452,6 @@ internal sealed class Tiler : IDisposable
         _hooks.Clear();
         _debounce.Dispose();
         _settle.Dispose();
+        _hover.Dispose();
     }
 }
