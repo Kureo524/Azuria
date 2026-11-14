@@ -223,6 +223,10 @@ curseur touche le haut d'un écran, **sur cet écran**. Un contrôle segmenté e
 - **Performances** : processeur, carte graphique, mémoire, disques, réseau, batterie.
 - **Météo** : conditions actuelles, prévisions par heure et par jour.
 
+Les données sont réelles : lecteur en cours par les contrôles multimédias de Windows (commandes et position
+comprises), mesures par les compteurs de Windows (une par seconde, seulement tableau de bord ouvert), météo
+d'Open-Meteo à la position de Windows arrondie à 10 km (mise à jour toutes les 30 min au plus, gardée en cache).
+
 **Lanceur** — tiroir collé au bas de la zone de travail (au-dessus de la barre des tâches de Windows), centré,
 largeur 560, rayon 18. S'ouvre par le logo Azuria de la barre ou la **touche Windows** (seule, ou Ctrl+Échap), qui
 n'ouvre plus le menu Démarrer ; les raccourcis Win + touche restent ceux de Windows, et pendant un jeu en plein
