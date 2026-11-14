@@ -213,8 +213,12 @@ curseur touche le haut d'un écran, **sur cet écran**. Un contrôle segmenté e
 **Lanceur** — tiroir collé au bas de la zone de travail (au-dessus de la barre des tâches de Windows), centré,
 largeur 560, rayon 18. S'ouvre par le logo Azuria de la barre ou la **touche Windows** (seule, ou Ctrl+Échap), qui
 n'ouvre plus le menu Démarrer ; les raccourcis Win + touche restent ceux de Windows, et pendant un jeu en plein
-écran la touche retrouve son comportement normal. Il s'ouvre sur l'écran du curseur ; pas d'ouverture au survol, le bas de l'écran étant pris par la barre des tâches. Champ de recherche
-en tête (il a le focus à l'ouverture), puis les applications. La même recherche trouvera les applications, les
+écran la touche retrouve son comportement normal. Il s'ouvre sur l'écran du curseur ; pas d'ouverture au survol, le bas de l'écran étant pris par la barre des tâches. Les applications et les jeux
+sont listés **une ligne pleine largeur chacun** (hauteur 48, icône 32, nom en SemiBold 13, sous-titre `--text-3`
+11 : « Application » ou « Jeu · Steam / Epic Games / Riot Games »), et le **champ de recherche est en bas**, contre
+le cadre d'où sort le tiroir (focus à l'ouverture). Les résultats se posent juste au-dessus du champ ; le premier
+est l'élément courant. ↑ ↓ pour choisir, Entrée ou clic pour lancer. Les **jeux installés** (Steam, Epic Games,
+Riot Games) sont lancés par leur launcher, qui s'ouvre en arrière-plan. La même recherche trouvera plus tard les
 fichiers, les réglages et les actions (éteindre, verrouiller…). Se range sur Échap ou au clic ailleurs.
 
 **Panneau droit** — notifications et réglages rapides. Tiroir collé au bord droit, pleine hauteur, largeur 200,
