@@ -196,7 +196,9 @@ redimensionnement à la main est annulé. Restent libres : boîtes de dialogue, 
 toujours au-dessus, fenêtres agrandies à la main, et **tout jeu** (plein écran, ou dossiers Riot Games, Steam, Epic
 Games, Vanguard). Le pavage s'arrête pendant un jeu en plein écran. Les fenêtres **glissent** vers leur place (0,22 s,
 décélération, section 11). La fenêtre active porte un **contour `--accent`** (bordure de Windows 11, 1 px), les autres
-gardent celui de Windows. Les coins des applis restent ceux de Windows (8) : Windows ne permet pas d'en changer le
+gardent celui de Windows. **Le focus suit la souris** : la fenêtre d'appli sous le curseur devient active dès que la
+souris s'y pose (pas en la traversant, pas sans mouvement de souris, pas bouton enfoncé, jamais aux dépens d'un
+jeu ni d'un menu ou du lanceur). Les coins des applis restent ceux de Windows (8) : Windows ne permet pas d'en changer le
 rayon sans injection ; avec 10 de marge, ils sont concentriques aux coins de 18 du cadre.
 
 **Barre** — verticale, collée au bord gauche, pleine hauteur, largeur 56. Révélée quand le curseur touche le bord
