@@ -239,9 +239,34 @@ internal static unsafe class GeometrySource
                 }
                 case GlassShape.Fillet f:
                     return Fillet(factory, f);
+                case GlassShape.Polygon poly:
+                    return Polygon(factory, poly);
                 default:
                     throw new NotSupportedException();
             }
+        }
+
+        // Polygone fermé (lignes droites), rempli : sert aux bandes de fondu en onglet (GlassLayer).
+        private static nint Polygon(nint factory, GlassShape.Polygon poly)
+        {
+            var pts = poly.Points;
+            nint path;
+            var createPath = (delegate* unmanaged[Stdcall]<nint, nint*, int>)V(factory)[10];
+            Check(createPath(factory, &path));
+            nint sink;
+            var open = (delegate* unmanaged[Stdcall]<nint, nint*, int>)V(path)[17];
+            Check(open(path, &sink));
+            try
+            {
+                var vs = V(sink);
+                ((delegate* unmanaged[Stdcall]<nint, PointF, int, void>)vs[5])(sink, new PointF(pts[0].X, pts[0].Y), 0); // BeginFigure, rempli
+                for (int i = 1; i < pts.Length; i++)
+                    ((delegate* unmanaged[Stdcall]<nint, PointF, void>)vs[10])(sink, new PointF(pts[i].X, pts[i].Y)); // AddLine
+                ((delegate* unmanaged[Stdcall]<nint, int, void>)vs[8])(sink, 1);             // EndFigure, fermé
+                Check(((delegate* unmanaged[Stdcall]<nint, int>)vs[9])(sink));               // Close
+            }
+            finally { Marshal.Release(sink); }
+            return path;
         }
 
         // Congé : le carré privé du quart de disque centré sur son coin C. Contour : coin opposé O,

@@ -19,8 +19,16 @@ internal sealed class GlassShape
     internal sealed record Round(float X, float Y, float W, float H, float R) : Piece;
     /// <summary>Carré (X, Y, R×R) privé du disque de rayon R centré en (Cx, Cy), l'un de ses coins.</summary>
     internal sealed record Fillet(float X, float Y, float R, float Cx, float Cy) : Piece;
+    /// <summary>Polygone fermé (sert aux bandes de fondu, pas aux formes des tiroirs).</summary>
+    internal sealed record Polygon(PointF[] Points) : Piece;
 
     public List<Piece> Pieces { get; } = new();
+
+    public GlassShape Poly(params PointF[] points)
+    {
+        if (points.Length >= 3) Pieces.Add(new Polygon(points));
+        return this;
+    }
 
     public GlassShape Rectangle(float x, float y, float w, float h)
     {
@@ -69,9 +77,22 @@ internal sealed class GlassShape
 /// </summary>
 internal sealed class GlassSurface
 {
-    // DA §3 : --surface rgba(16, 18, 25, 0.62) ; --solid rgb(16, 18, 25) (repli sans flou).
-    internal static readonly Color Tint = Color.FromArgb(158, 16, 18, 25);
+    // DA §3 et §9 : voile des tiroirs rgba(16, 18, 25, 0.62) ; cadre plus couvrant, à la valeur
+    // --surface de la DA (0.84) ; --solid rgb(16, 18, 25) (repli sans flou).
+    internal const float DrawerAlpha = 0.62f;
+    internal const float FrameAlpha = 0.84f;
+    internal static readonly Color Tint = Ink(DrawerAlpha);
+    internal static readonly Color FrameTint = Ink(FrameAlpha);
     private static readonly Color Solid = Color.FromArgb(255, 16, 18, 25);
+
+    /// <summary>
+    /// Voile à poser par-dessus celui d'un tiroir pour retrouver, cumulé, l'opacité du cadre :
+    /// 1 − (1 − cadre) / (1 − tiroir). Départ du fondu au bord collé au cadre.
+    /// </summary>
+    internal static readonly Color FadeStart = Ink(1 - (1 - FrameAlpha) / (1 - DrawerAlpha));
+    internal static readonly Color FadeEnd = Ink(0);
+
+    private static Color Ink(float alpha) => Color.FromArgb((byte)Math.Round(alpha * 255), 16, 18, 25);
 
     private readonly Compositor _c;
     private readonly DesktopWindowTarget _target;
@@ -90,12 +111,12 @@ internal sealed class GlassSurface
     }
 
     /// <summary>Ajoute une couche de verre, couvrant au plus <paramref name="area"/> (coordonnées de la fenêtre).</summary>
-    public GlassLayer AddLayer(Rectangle area)
+    public GlassLayer AddLayer(Rectangle area, Color tint)
     {
         var holder = _c.CreateContainerVisual();
         holder.RelativeSizeAdjustment = Vector2.One;
         _root.Children.InsertAtTop(holder);
-        var layer = new GlassLayer(this, _c, holder);
+        var layer = new GlassLayer(this, _c, holder, tint);
         layer.SetArea(area);
         _layers.Add(layer);
         return layer;
@@ -126,9 +147,10 @@ internal sealed class GlassLayer
     private readonly ContainerVisual _glass;  // découpé à la forme, déplacé par Offset
     private readonly SpriteVisual _backdrop;
     private readonly SpriteVisual _tint;
+    private readonly ContainerVisual _fade;   // bandes de fondu, liées à la forme (pas décalées)
     private Rectangle _area;
 
-    internal GlassLayer(GlassSurface surface, Compositor c, ContainerVisual holder)
+    internal GlassLayer(GlassSurface surface, Compositor c, ContainerVisual holder, Color tint)
     {
         _surface = surface;
         _c = c;
@@ -141,10 +163,53 @@ internal sealed class GlassLayer
         _backdrop = c.CreateSpriteVisual();
         _backdrop.Brush = surface.BackdropBrush();
         _tint = c.CreateSpriteVisual();
-        _tint.Brush = c.CreateColorBrush(GlassSurface.Tint);
+        _tint.Brush = c.CreateColorBrush(tint);
+        _fade = c.CreateContainerVisual();
         _glass.Children.InsertAtTop(_backdrop);
         _glass.Children.InsertAtTop(_tint);
+        _glass.Children.InsertAtTop(_fade);
         _glass.IsVisible = false;
+    }
+
+    /// <summary>
+    /// Fondu le long des côtés collés au cadre : sur <paramref name="band"/> px, le voile passe de
+    /// l'opacité du cadre à celle du tiroir, pour qu'aucune frontière nette ne marque la jonction.
+    /// Coins en onglet (diagonale) là où deux côtés fondus se rencontrent : pas de double voile.
+    /// </summary>
+    public void SetFade(Size size, DrawerSides sides, int band)
+    {
+        _fade.Children.RemoveAll();
+        float w = size.Width, h = size.Height, b = Math.Min(band, Math.Min(size.Width, size.Height) / 2);
+        if (b <= 0 || sides == DrawerSides.None) return;
+
+        float l = sides.HasFlag(DrawerSides.Left) ? b : 0, t = sides.HasFlag(DrawerSides.Top) ? b : 0;
+        float r = sides.HasFlag(DrawerSides.Right) ? b : 0, bo = sides.HasFlag(DrawerSides.Bottom) ? b : 0;
+
+        // Chaque bande : sa position, sa taille, le sens du dégradé et son contour (coordonnées locales).
+        if (l > 0) Band(new(0, 0), new(b, h), new(0, 0), new(1, 0),
+            new(0, 0), new(b, t), new(b, h - bo), new(0, h));
+        if (t > 0) Band(new(0, 0), new(w, b), new(0, 0), new(0, 1),
+            new(0, 0), new(w, 0), new(w - r, b), new(l, b));
+        if (r > 0) Band(new(w - b, 0), new(b, h), new(1, 0), new(0, 0),
+            new(b, 0), new(b, h), new(0, h - bo), new(0, t));
+        if (bo > 0) Band(new(0, h - b), new(w, b), new(0, 1), new(0, 0),
+            new(0, b), new(l, 0), new(w - r, 0), new(w, b));
+    }
+
+    private void Band(Vector2 at, Vector2 size, Vector2 from, Vector2 to, params PointF[] outline)
+    {
+        var brush = _c.CreateLinearGradientBrush();
+        brush.StartPoint = from;
+        brush.EndPoint = to;
+        brush.ColorStops.Add(_c.CreateColorGradientStop(0, GlassSurface.FadeStart));
+        brush.ColorStops.Add(_c.CreateColorGradientStop(1, GlassSurface.FadeEnd));
+        var v = _c.CreateSpriteVisual();
+        v.Brush = brush;
+        v.Offset = new Vector3(at, 0);
+        v.Size = size;
+        v.Clip = _c.CreateGeometricClip(_c.CreatePathGeometry(
+            GeometrySource.CreatePath(new GlassShape().Poly(outline))));
+        _fade.Children.InsertAtTop(v);
     }
 
     internal void RefreshBackdrop() => _backdrop.Brush = _surface.BackdropBrush();

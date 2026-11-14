@@ -59,7 +59,7 @@ internal sealed class ScreenSurface : IDisposable
         Reserve();
         _window.CreateControl();
         _glass = new GlassSurface(_window.Handle) { Blur = GlassWindow.TransparencyEnabled() };
-        _frame = _glass.AddLayer(new Rectangle(Point.Empty, Screen.Bounds.Size));
+        _frame = _glass.AddLayer(new Rectangle(Point.Empty, Screen.Bounds.Size), GlassSurface.FrameTint);
         Layout();
         _window.Show();
     }
@@ -128,12 +128,13 @@ internal sealed class ScreenSurface : IDisposable
         if (_glass is null) return;
         if (!_drawers.TryGetValue(drawer, out var d))
         {
-            d = (_glass.AddLayer(Local(_inner)), Size.Empty);
+            d = (_glass.AddLayer(Local(_inner), GlassSurface.Tint), Size.Empty);
             _drawers[drawer] = d;
         }
         if (visible && d.Size != drawer.Size)
         {
             d.Layer.SetShape(drawer.Shape);
+            d.Layer.SetFade(drawer.Size, drawer.AttachedSides, Monitors.Scale(Screen, ShellMetrics.Fade));
             _drawers[drawer] = d = (d.Layer, drawer.Size);
         }
         var at = drawer.Location;
