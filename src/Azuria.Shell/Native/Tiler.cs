@@ -1,0 +1,318 @@
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace Azuria.Shell.Native;
+
+/// <summary>
+/// Pavage des fenêtres (idée du « dwindle » de Hyprland, réécrite ici). Sur chaque écran, les
+/// fenêtres d'applis remplissent la zone de travail (intérieur du cadre), avec une marge contre le
+/// cadre et un espace entre elles :
+/// - une seule fenêtre : toute la zone ;
+/// - une deuxième : la zone se partage en deux, côte à côte ;
+/// - chaque nouvelle coupe en deux la place de la précédente, dans le sens le plus long (spirale).
+/// Ordre d'arrivée conservé. Une fenêtre glissée sur une autre échange sa place avec elle ; glissée
+/// sur un autre écran, elle y rejoint le pavage. Un redimensionnement à la main est annulé.
+///
+/// Seules les fenêtres « normales » sont pavées : redimensionnables, avec un bouton agrandir, sans
+/// propriétaire (pas de boîte de dialogue), pas toujours au-dessus, pas réduites. Une fenêtre agrandie
+/// à la main est laissée telle quelle ; une fenêtre qui s'ouvre agrandie rejoint le pavage.
+///
+/// Garde-fous Vanguard (CLAUDE.md) : on ne fait que lire la position des fenêtres et les déplacer
+/// avec les API documentées du gestionnaire de fenêtres. Les notifications viennent de
+/// <c>SetWinEventHook</c> en mode « hors contexte » : rien n'est chargé dans les autres processus.
+/// **Aucun jeu n'est touché** : ni les fenêtres plein écran, ni celles des dossiers de Riot Games,
+/// Steam, Epic Games ou Vanguard ; et tout s'arrête tant qu'un jeu est en plein écran.
+/// </summary>
+internal sealed class Tiler : IDisposable
+{
+    // Espacements (px logiques) : contre le cadre, et entre deux fenêtres.
+    private const int OuterGap = 10;
+    private const int InnerGap = 10;
+
+    private const uint EVENT_SYSTEM_MOVESIZESTART = 0x000A, EVENT_SYSTEM_MOVESIZEEND = 0x000B;
+    private const uint EVENT_SYSTEM_MINIMIZESTART = 0x0016, EVENT_SYSTEM_MINIMIZEEND = 0x0017;
+    private const uint EVENT_OBJECT_DESTROY = 0x8001, EVENT_OBJECT_SHOW = 0x8002, EVENT_OBJECT_HIDE = 0x8003;
+    private const uint EVENT_OBJECT_NAMECHANGE = 0x800C;
+    private const uint EVENT_OBJECT_CLOAKED = 0x8017, EVENT_OBJECT_UNCLOAKED = 0x8018;
+    private const uint WINEVENT_OUTOFCONTEXT = 0x0000, WINEVENT_SKIPOWNPROCESS = 0x0002;
+
+    private const int GWL_STYLE = -16, GWL_EXSTYLE = -20;
+    private const int WS_THICKFRAME = 0x00040000, WS_MAXIMIZEBOX = 0x00010000;
+    private const int WS_EX_TOPMOST = 0x00000008, WS_EX_DLGMODALFRAME = 0x00000001;
+    private const uint GW_OWNER = 4;
+    private const int SW_RESTORE = 9;
+    private const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_NOOWNERZORDER = 0x0200, SWP_ASYNCWINDOWPOS = 0x4000;
+    private const uint DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+
+    private delegate void WinEventProc(nint hook, uint ev, nint hwnd, int idObject, int idChild, uint thread, uint time);
+
+    [DllImport("user32.dll")] private static extern nint SetWinEventHook(uint min, uint max, nint module, WinEventProc proc, uint pid, uint thread, uint flags);
+    [DllImport("user32.dll")] private static extern bool UnhookWinEvent(nint hook);
+    [DllImport("user32.dll")] private static extern bool IsWindow(nint h);
+    [DllImport("user32.dll")] private static extern bool IsIconic(nint h);
+    [DllImport("user32.dll")] private static extern bool IsZoomed(nint h);
+    [DllImport("user32.dll")] private static extern int GetWindowLong(nint h, int index);
+    [DllImport("user32.dll")] private static extern nint GetWindow(nint h, uint cmd);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(nint h, out RECT r);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(nint h, int cmd);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(nint h, nint after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumProc proc, nint lParam);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint h, out uint pid);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(nint h, uint attr, out RECT value, int size);
+    [DllImport("kernel32.dll")] private static extern nint OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll")] private static extern bool CloseHandle(nint h);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool QueryFullProcessImageName(nint p, int flags, StringBuilder s, ref int size);
+    private delegate bool EnumProc(nint h, nint lParam);
+
+    // Dossiers dont les fenêtres ne sont jamais touchées (jeux, launchers de jeux, anti-triche).
+    private static readonly string[] GameFolders =
+        { @"\riot games\", @"\riot vanguard\", @"\steamapps\", @"\epic games\" };
+
+    private readonly WinEventProc _proc; // gardé vivant tant que les crochets sont posés
+    private readonly List<nint> _hooks = new();
+    private readonly List<nint> _order = new();                  // fenêtres pavées, ordre d'arrivée
+    private readonly Dictionary<nint, string> _screenOf = new(); // écran de chaque fenêtre
+    private readonly Dictionary<nint, Rectangle> _tiles = new(); // dernière place donnée
+    private readonly HashSet<nint> _candidates = new();          // apparues, à examiner
+    private readonly HashSet<nint> _fresh = new();               // nouvelles : on les sort de l'agrandi
+    private readonly Dictionary<uint, bool> _gamePid = new();
+    private readonly System.Windows.Forms.Timer _debounce = new() { Interval = 80 };
+    private readonly System.Windows.Forms.Timer _settle = new() { Interval = 600 };
+    private nint _dragged;
+    private bool _suspended;
+
+    public Tiler()
+    {
+        _proc = OnEvent;
+        _debounce.Tick += (_, _) => { _debounce.Stop(); Reconcile(); };
+        // Beaucoup d'applis se replacent elles-mêmes juste après s'être affichées : seconde passe.
+        _settle.Tick += (_, _) => { _settle.Stop(); Apply(); _fresh.Clear(); };
+    }
+
+    public void Start()
+    {
+        uint flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
+        foreach (var (min, max) in new[]
+        {
+            (EVENT_SYSTEM_MOVESIZESTART, EVENT_SYSTEM_MOVESIZEEND),
+            (EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND),
+            (EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE),
+            (EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE),
+            (EVENT_OBJECT_CLOAKED, EVENT_OBJECT_UNCLOAKED),
+        })
+        {
+            nint h = SetWinEventHook(min, max, 0, _proc, 0, 0, flags);
+            if (h != 0) _hooks.Add(h);
+        }
+        // Les fenêtres déjà ouvertes rejoignent le pavage, comme si elles venaient d'arriver.
+        EnumWindows((h, _) => { _candidates.Add(h); return true; }, 0);
+        Reconcile();
+    }
+
+    /// <summary>Vrai pendant un jeu en plein écran : on ne touche à aucune fenêtre.</summary>
+    public bool Suspended
+    {
+        get => _suspended;
+        set
+        {
+            if (_suspended == value) return;
+            _suspended = value;
+            if (!value) Schedule();
+        }
+    }
+
+    /// <summary>La zone de travail ou les écrans ont changé : tout se recale.</summary>
+    public void Relayout() => Schedule();
+
+    private void Schedule() { _debounce.Stop(); _debounce.Start(); }
+
+    private void OnEvent(nint hook, uint ev, nint hwnd, int idObject, int idChild, uint thread, uint time)
+    {
+        if (idObject != 0 /* OBJID_WINDOW */ || idChild != 0 || hwnd == 0) return;
+        switch (ev)
+        {
+            case EVENT_OBJECT_SHOW:
+            case EVENT_OBJECT_UNCLOAKED:
+            case EVENT_SYSTEM_MINIMIZEEND:
+                if (!_order.Contains(hwnd)) _candidates.Add(hwnd);
+                break;
+            case EVENT_OBJECT_NAMECHANGE:
+                // Une fenêtre sans titre n'est pas encore une appli : elle peut le devenir.
+                if (_order.Contains(hwnd)) return;
+                _candidates.Add(hwnd);
+                break;
+            case EVENT_SYSTEM_MOVESIZESTART:
+                return;
+            case EVENT_SYSTEM_MOVESIZEEND:
+                _dragged = hwnd;
+                break;
+        }
+        Schedule();
+    }
+
+    // ----- état -----
+
+    private void Reconcile()
+    {
+        if (_suspended) return;
+
+        // Fenêtres disparues.
+        foreach (var h in _order.Where(h => !IsWindow(h)).ToList()) Forget(h);
+
+        // Nouvelles fenêtres pavables.
+        bool added = false;
+        foreach (var h in _candidates)
+        {
+            if (_order.Contains(h) || !Tileable(h, allowZoomed: true)) continue;
+            _order.Add(h);
+            _screenOf[h] = Screen.FromHandle(h).DeviceName;
+            _fresh.Add(h);
+            added = true;
+        }
+        _candidates.Clear();
+
+        if (_dragged != 0) { Dropped(_dragged); _dragged = 0; }
+
+        Apply();
+        if (added) { _settle.Stop(); _settle.Start(); }
+    }
+
+    private void Forget(nint h)
+    {
+        _order.Remove(h);
+        _screenOf.Remove(h);
+        _tiles.Remove(h);
+        _fresh.Remove(h);
+    }
+
+    // Fin d'un glissé : sur la place d'une autre fenêtre, on échange ; sur un autre écran, on y passe.
+    private void Dropped(nint h)
+    {
+        int i = _order.IndexOf(h);
+        if (i < 0) return;
+        GetCursorPos(out POINT p);
+        var cursor = new Point(p.X, p.Y);
+        string target = Screen.FromPoint(cursor).DeviceName;
+        var over = _tiles.FirstOrDefault(t => t.Key != h && t.Value.Contains(cursor) && _order.Contains(t.Key)).Key;
+        if (over != 0)
+        {
+            int j = _order.IndexOf(over);
+            (_order[i], _order[j]) = (_order[j], _order[i]);
+            (_screenOf[h], _screenOf[over]) = (_screenOf[over], _screenOf[h]);
+        }
+        else _screenOf[h] = target;
+    }
+
+    // ----- placement -----
+
+    private void Apply()
+    {
+        if (_suspended) return;
+        foreach (var screen in Screen.AllScreens)
+        {
+            var windows = _order.Where(h => _screenOf.TryGetValue(h, out var s) && s == screen.DeviceName
+                                            && Tileable(h, allowZoomed: _fresh.Contains(h))).ToList();
+            if (windows.Count == 0) continue;
+            int outer = Monitors.Scale(screen, OuterGap), inner = Monitors.Scale(screen, InnerGap);
+            var area = Rectangle.Inflate(Monitors.WorkArea(screen), -outer, -outer);
+            var rects = Dwindle(area, windows.Count, inner);
+            for (int k = 0; k < windows.Count; k++) Place(windows[k], rects[k]);
+        }
+    }
+
+    /// <summary>Chaque fenêtre prend la moitié de la place restante, coupée dans le sens le plus long.</summary>
+    private static List<Rectangle> Dwindle(Rectangle area, int n, int gap)
+    {
+        var result = new List<Rectangle>(n);
+        var r = area;
+        for (int i = 0; i < n; i++)
+        {
+            if (i == n - 1) { result.Add(r); break; }
+            if (r.Width >= r.Height)
+            {
+                int w = (r.Width - gap) / 2;
+                result.Add(new Rectangle(r.X, r.Y, w, r.Height));
+                r = new Rectangle(r.X + w + gap, r.Y, r.Width - w - gap, r.Height);
+            }
+            else
+            {
+                int hh = (r.Height - gap) / 2;
+                result.Add(new Rectangle(r.X, r.Y, r.Width, hh));
+                r = new Rectangle(r.X, r.Y + hh + gap, r.Width, r.Height - hh - gap);
+            }
+        }
+        return result;
+    }
+
+    // Place la partie visible de la fenêtre sur le rectangle : Windows 11 entoure les fenêtres d'une
+    // bordure de redimensionnement invisible, qu'on compense (DWMWA_EXTENDED_FRAME_BOUNDS).
+    private void Place(nint h, Rectangle r)
+    {
+        if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
+        _tiles[h] = r;
+        if (!GetWindowRect(h, out var wr)) return;
+        int l = 0, t = 0, ri = 0, b = 0;
+        if (DwmGetWindowAttribute(h, DWMWA_EXTENDED_FRAME_BOUNDS, out var fr, Marshal.SizeOf<RECT>()) == 0)
+        {
+            l = fr.Left - wr.Left; t = fr.Top - wr.Top;
+            ri = wr.Right - fr.Right; b = wr.Bottom - fr.Bottom;
+        }
+        int x = r.X - l, y = r.Y - t, w = r.Width + l + ri, hh = r.Height + t + b;
+        if (wr.Left == x && wr.Top == y && wr.Right - wr.Left == w && wr.Bottom - wr.Top == hh) return;
+        SetWindowPos(h, 0, x, y, w, hh, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS);
+    }
+
+    // ----- règles -----
+
+    private bool Tileable(nint h, bool allowZoomed)
+    {
+        if (!IsWindow(h) || !OpenWindows.IsAppWindow(h) || IsIconic(h)) return false;
+        if (IsZoomed(h) && !allowZoomed) return false;
+        int style = GetWindowLong(h, GWL_STYLE), ex = GetWindowLong(h, GWL_EXSTYLE);
+        if ((style & WS_THICKFRAME) == 0 || (style & WS_MAXIMIZEBOX) == 0) return false;
+        if ((ex & (WS_EX_TOPMOST | WS_EX_DLGMODALFRAME)) != 0) return false;
+        if (GetWindow(h, GW_OWNER) != 0) return false;
+        if (!GetWindowRect(h, out var wr)) return false;
+        var rect = Rectangle.FromLTRB(wr.Left, wr.Top, wr.Right, wr.Bottom);
+        if (rect.Contains(Screen.FromHandle(h).Bounds)) return false; // plein écran : un jeu, une vidéo
+        return !IsGame(h);
+    }
+
+    private bool IsGame(nint h)
+    {
+        GetWindowThreadProcessId(h, out uint pid);
+        if (_gamePid.TryGetValue(pid, out bool game)) return game;
+        game = true; // chemin illisible (processus protégé, élevé…) : dans le doute, on n'y touche pas
+        nint p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (p != 0)
+        {
+            try
+            {
+                var sb = new StringBuilder(1024);
+                int size = sb.Capacity;
+                if (QueryFullProcessImageName(p, 0, sb, ref size))
+                {
+                    string path = sb.ToString().ToLowerInvariant();
+                    game = GameFolders.Any(path.Contains);
+                }
+            }
+            finally { CloseHandle(p); }
+        }
+        if (_gamePid.Count > 512) _gamePid.Clear();
+        _gamePid[pid] = game;
+        return game;
+    }
+
+    public void Dispose()
+    {
+        foreach (var h in _hooks) UnhookWinEvent(h);
+        _hooks.Clear();
+        _debounce.Dispose();
+        _settle.Dispose();
+    }
+}

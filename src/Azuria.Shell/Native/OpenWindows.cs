@@ -49,7 +49,7 @@ internal sealed class OpenWindows : IDisposable
     private readonly HookWindow _hook;
     private readonly System.Windows.Forms.Timer _debounce = new() { Interval = 120 };
     private readonly Dictionary<(nint, nint), string> _icons = new(); // (fenêtre, icône) → PNG en base64
-    private readonly int _ownPid = Environment.ProcessId;
+    private static readonly int OwnPid = Environment.ProcessId;
 
     /// <summary>La liste a (peut-être) changé.</summary>
     public event Action? Changed;
@@ -100,7 +100,7 @@ internal sealed class OpenWindows : IDisposable
 
     // Mêmes règles que la barre des tâches : visible, pas masquée (« cloaked »), sans propriétaire
     // ou marquée « appli », pas une palette d'outils ; jamais les fenêtres d'Azuria.
-    private bool IsAppWindow(nint h)
+    internal static bool IsAppWindow(nint h)
     {
         if (!IsWindowVisible(h) || GetWindowTextLength(h) == 0) return false;
         int ex = GetWindowLong(h, GWL_EXSTYLE);
@@ -109,7 +109,7 @@ internal sealed class OpenWindows : IDisposable
         if (!appWindow && GetWindow(h, GW_OWNER) != 0) return false;
         if (DwmGetWindowAttribute(h, DWMWA_CLOAKED, out int cloaked, sizeof(int)) == 0 && cloaked != 0) return false;
         GetWindowThreadProcessId(h, out uint pid);
-        return pid != _ownPid;
+        return pid != OwnPid;
     }
 
     private static string Title(nint h)

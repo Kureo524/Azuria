@@ -18,6 +18,7 @@ internal sealed class ShellContext : ApplicationContext
     private readonly Taskbar? _taskbar;
     private readonly OpenWindows? _apps;
     private readonly StartKey? _startKey;
+    private readonly Tiler _tiler = new();
     private readonly Catalog _catalog;
     private readonly System.Windows.Forms.Timer _fullScreenWatch = new() { Interval = 250 };
 
@@ -90,6 +91,10 @@ internal sealed class ShellContext : ApplicationContext
         _startKey.Pressed += () => { if (!GlassWindow.Suspended) launcher.Toggle(Cursor.Position); };
         _startKey.Enabled = true;
 
+        // Les fenêtres d'applis se pavent dans la zone de travail (en pause pendant un jeu).
+        _tiler.Suspended = GlassWindow.Suspended;
+        _tiler.Start();
+
         // Fin de session Windows : on rend la barre des tâches avant de partir.
         SystemEvents.SessionEnding += (_, _) => Shutdown();
     }
@@ -106,6 +111,7 @@ internal sealed class ShellContext : ApplicationContext
         _down = true;
         _fullScreenWatch.Stop();
         _startKey?.Dispose();
+        _tiler.Dispose();
         _apps?.Dispose();
         _taskbar?.Dispose();
         DisposeSurfaces();
@@ -158,7 +164,11 @@ internal sealed class ShellContext : ApplicationContext
         {
             var s = new ScreenSurface(screen);
             s.FullScreenChanged += (_, _) => UpdateSuspension();
-            s.Relaid += () => { foreach (var d in _drawers) OnDrawerMoved(d); }; // le verre des tiroirs se recale
+            s.Relaid += () =>
+            {
+                foreach (var d in _drawers) OnDrawerMoved(d); // le verre des tiroirs se recale
+                _tiler.Relayout();                            // et les fenêtres pavées aussi
+            };
             s.CloseRequested += Shutdown;
             s.Start();
             _surfaces.Add(s);
@@ -171,6 +181,7 @@ internal sealed class ShellContext : ApplicationContext
     {
         GlassWindow.Suspended = _surfaces.Any(s => s.IsFullScreen);
         if (_startKey is not null && !_down) _startKey.Enabled = !GlassWindow.Suspended;
+        if (!_down) _tiler.Suspended = GlassWindow.Suspended;
     }
 
     // Écrans branchés, débranchés ou redimensionnés : on reconstruit le verre. Windows envoie aussi
