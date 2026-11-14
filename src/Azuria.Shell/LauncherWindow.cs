@@ -18,7 +18,7 @@ internal sealed class LauncherWindow : GlassWindow
     private const int BodyHLogical = 380;   // hauteur maximale
     private const int MinHLogical = 64;     // champ de recherche + marges
     private const int RadiusLogical = 18;   // DA §8 : lanceur
-    private const double ResizeMs = 140;    // DA §11 : changement d'état
+    private const double ResizeMs = 280;    // DA §11 : taille du lanceur (même durée que le découpage de la page)
 
     private Screen _current = Screen.PrimaryScreen ?? Screen.AllScreens[0];
     private double _glassH = BodyHLogical;  // hauteur visible du verre (px logiques), animée

@@ -10,8 +10,13 @@
        d'où sort le tiroir. La liste vient du C# (menu Démarrer + jeux Steam, Epic, Riot). */
     .launch { display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 14px; }
 
+    /* Le contenu est découpé à la hauteur du verre, et ce découpage suit le verre (même durée, même
+       courbe que LauncherWindow) : rien ne dépasse au-dessus pendant que le lanceur grandit. */
+    .launch { transition: clip-path 0.28s var(--ease-in); }
+
     .list {
-      flex: 1 1 auto; min-height: 0; overflow-y: auto;
+      position: relative; /* repère des lignes qui partent */
+      flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
       display: flex; flex-direction: column; gap: 2px;
     }
     /* Peu de résultats : ils se posent juste au-dessus du champ. */
@@ -39,6 +44,25 @@
     .sub { font-size: 11px; color: var(--text-3); white-space: nowrap; }
     .empty { text-align: center; color: var(--text-3); font-size: 12px; padding: 24px 0; flex: 0 0 auto; }
 
+    /* Mouvement de la liste (DA §11) : seules les lignes qui ne correspondent plus s'effacent, les
+       autres glissent jusqu'à leur nouvelle place, les nouvelles apparaissent en fondu. */
+    @keyframes row-in { from { opacity: 0; transform: translateY(6px); } }
+    .entering { animation: row-in 0.2s var(--ease-in) both; }
+    .leaving {
+      position: absolute; left: 0; right: 6px; margin: 0;
+      pointer-events: none;
+      transition: opacity 0.14s var(--ease-out);
+      opacity: 0;
+    }
+    .moving { transition: transform 0.24s var(--ease-in), background var(--dur-hover) var(--ease-in); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .launch { transition: none; }
+      @keyframes row-in { from { opacity: 0; } }
+      .entering { animation: row-in 0.12s linear both; }
+      .moving { transition: background var(--dur-hover) var(--ease-in); }
+    }
+
     /* Champ de recherche des panneaux : 36 de haut (DA §10). */
     .search {
       display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
@@ -58,7 +82,7 @@
 <body>
   <script src="drawer.js"></script>
   <div class="content launch">
-    <div class="list" id="list"><div class="empty">Chargement…</div></div>
+    <div class="list" id="list"></div>
     <div class="search">
       <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
       <input id="q" placeholder="Rechercher une application ou un jeu…" autocomplete="off" spellcheck="false">
@@ -68,12 +92,14 @@
   <script>
     const view = window.chrome?.webview;
     const q = document.getElementById('q'), list = document.getElementById('list');
+    const launchEl = document.querySelector('.launch'), searchEl = document.querySelector('.search');
     const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-    const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 
-    let apps = null;   // [{ id, name, sub, icon, game, key }]
-    let shown = [];    // résultats affichés
+    let apps = null;          // [{ id, name, sub, icon, game, key }]
+    let shown = [];           // résultats affichés, dans l'ordre
     let sel = 0;
+    const nodes = new Map();  // id → ligne : chaque appli garde la sienne d'un filtrage à l'autre
 
     // Pertinence : début du nom, puis début d'un mot, puis n'importe où, puis le sous-titre (« steam »…).
     function score(a, term) {
@@ -85,43 +111,130 @@
       return -1;
     }
 
+    function rowFor(a) {
+      let el = nodes.get(a.id);
+      if (el) return el;
+      el = document.createElement('div');
+      el.className = 'row';
+      el.dataset.id = a.id;
+      const ic = a.icon ? Object.assign(document.createElement('img'), { className: 'ic', src: a.icon, alt: '' })
+                        : letter(a.name);
+      const txt = document.createElement('div');
+      txt.className = 'txt';
+      txt.append(Object.assign(document.createElement('div'), { className: 'name', textContent: a.name }),
+                 Object.assign(document.createElement('div'), { className: 'sub', textContent: a.sub }));
+      el.append(ic, txt);
+      nodes.set(a.id, el);
+      return el;
+    }
+
+    function letter(name) {
+      return Object.assign(document.createElement('div'), { className: 'ic letter', textContent: name[0] || '?' });
+    }
+
+    const empty = Object.assign(document.createElement('div'), { className: 'empty', textContent: 'Aucun résultat' });
+
+    // Filtre la liste en ne touchant qu'à ce qui change (technique « FLIP ») : on note où est chaque
+    // ligne, on met la liste à jour, puis chaque ligne restée part de son ancienne place et glisse.
     function render() {
       if (!apps) return;
       const term = norm(q.value.trim());
-      shown = apps.map(a => [score(a, term), a]).filter(([s]) => s >= 0)
-                  .sort((x, y) => x[0] - y[0] || x[1].name.localeCompare(y[1].name, 'fr'))
-                  .map(([, a]) => a);
+      const next = apps.map(a => [score(a, term), a]).filter(([s]) => s >= 0)
+                       .sort((x, y) => x[0] - y[0] || x[1].name.localeCompare(y[1].name, 'fr'))
+                       .map(([, a]) => a);
+      const animate = !reduced.matches && list.isConnected;
+
+      // 1. Avant : position de chaque ligne visible.
+      const before = new Map();
+      for (const el of list.children)
+        if (!el.classList.contains('leaving')) before.set(el, el.getBoundingClientRect().top);
+
+      // 2. Les lignes qui ne correspondent plus restent où elles sont, hors du flux, et s'effacent.
+      const keep = new Set(next.map(a => a.id));
+      const listTop = list.getBoundingClientRect().top - list.scrollTop;
+      for (const [el, top] of before) {
+        const gone = el === empty ? next.length > 0 : !keep.has(el.dataset.id);
+        if (!gone) continue;
+        if (!animate) { el.remove(); continue; }
+        el.classList.remove('entering', 'moving', 'sel');
+        el.style.transform = '';
+        el.style.top = (top - listTop) + 'px';
+        el.classList.add('leaving');
+        setTimeout(() => { if (el.classList.contains('leaving')) { el.remove(); el.classList.remove('leaving'); el.style.top = ''; } }, 160);
+      }
+
+      // 3. La nouvelle liste, dans l'ordre (une ligne qui revenait en s'effaçant est reprise). On ne
+      //    déplace une ligne dans la page que si elle n'est pas déjà à sa place : un déplacement
+      //    annule ses transitions en cours.
+      const wanted = next.length ? next.map(rowFor) : [empty];
+      let cursor = list.firstElementChild;
+      const skipLeaving = () => { while (cursor && cursor.classList.contains('leaving') && !wanted.includes(cursor)) cursor = cursor.nextElementSibling; };
+      for (const el of wanted) {
+        const wasLeaving = el.classList.contains('leaving');
+        if (wasLeaving) { el.classList.remove('leaving'); el.style.top = ''; }
+        if (!before.has(el) || wasLeaving) {
+          el.classList.remove('entering');
+          if (animate) { void el.offsetWidth; el.classList.add('entering'); }
+        }
+        skipLeaving();
+        if (el === cursor) cursor = cursor.nextElementSibling;
+        else list.insertBefore(el, cursor);
+      }
+
+      shown = next;
       sel = 0;
-      list.innerHTML = shown.length
-        ? shown.map((a, i) => `
-          <div class="row${i === sel ? ' sel' : ''}" data-i="${i}">
-            ${a.icon ? `<img class="ic" src="${esc(a.icon)}" alt="">` : `<div class="ic letter">${esc(a.name[0] || '?')}</div>`}
-            <div class="txt"><div class="name">${esc(a.name)}</div><div class="sub">${esc(a.sub)}</div></div>
-          </div>`).join('')
-        : '<div class="empty">Aucun résultat</div>';
       list.scrollTop = 0;
+      paintSel();
       fit();
+
+      // 4. Après : chaque ligne restée repart de son ancienne place et glisse vers la nouvelle.
+      if (!animate) return;
+      // Place réelle, sans le glissé éventuellement en cours (il reprendra depuis `before`).
+      for (const el of wanted) { el.classList.remove('moving'); el.style.transform = ''; }
+      for (const el of wanted) {
+        if (!before.has(el)) continue;
+        const dy = before.get(el) - el.getBoundingClientRect().top;
+        if (Math.abs(dy) < 0.5) continue;
+        el.classList.remove('moving');
+        el.style.transform = `translateY(${dy}px)`;
+      }
+      void list.offsetHeight; // fixe le point de départ avant de lancer la transition
+      for (const el of wanted) {
+        if (!el.style.transform) continue;
+        el.classList.add('moving');
+        el.style.transform = '';
+      }
+    }
+
+    function paintSel() {
+      shown.forEach((a, i) => nodes.get(a.id)?.classList.toggle('sel', i === sel));
     }
 
     // Hauteur du contenu (marges + résultats + champ), annoncée au C# : le verre se rétracte quand il
-    // y a peu de résultats, la hauteur de la fenêtre restant le maximum.
-    const launchEl = document.querySelector('.launch');
+    // y a peu de résultats, la hauteur de la fenêtre restant le maximum. Les lignes qui partent ne
+    // comptent pas.
     let lastHeight = -1;
     function fit() {
       const cs = getComputedStyle(launchEl), ls = getComputedStyle(list);
+      const items = [...list.children].filter(el => !el.classList.contains('leaving'));
       let rows = 0;
-      for (const c of list.children) rows += c.offsetHeight;
-      rows += Math.max(0, list.children.length - 1) * parseFloat(ls.rowGap || 0);
+      for (const el of items) rows += el.offsetHeight;
+      rows += Math.max(0, items.length - 1) * parseFloat(ls.rowGap || 0);
       const h = Math.ceil(parseFloat(cs.paddingTop) + rows + parseFloat(cs.rowGap || 0)
-                          + document.querySelector('.search').offsetHeight + parseFloat(cs.paddingBottom));
-      if (h !== lastHeight) { lastHeight = h; view?.postMessage('height:' + h); }
+                          + searchEl.offsetHeight + parseFloat(cs.paddingBottom));
+      if (h === lastHeight) return;
+      lastHeight = h;
+      view?.postMessage('height:' + h);
+      // Mêmes bornes que le C# (64 au moins, la fenêtre au plus) ; le découpage glisse avec le verre.
+      const glass = Math.min(Math.max(h, 64), innerHeight);
+      launchEl.style.clipPath = `inset(${innerHeight - glass}px 0 0 0)`;
     }
 
     function select(i) {
       if (!shown.length) return;
       sel = Math.max(0, Math.min(shown.length - 1, i));
-      list.querySelectorAll('.row').forEach(r => r.classList.toggle('sel', +r.dataset.i === sel));
-      list.querySelector('.row.sel')?.scrollIntoView({ block: 'nearest' });
+      paintSel();
+      nodes.get(shown[sel].id)?.scrollIntoView({ block: 'nearest' });
     }
 
     function launch(i) {
@@ -129,23 +242,26 @@
       if (a) view?.postMessage('launch:' + a.id);
     }
 
+    const indexOf = el => shown.findIndex(a => a.id === el?.dataset.id);
+
+    // Fondu d'arrivée terminé : on retire l'animation, sinon elle garde la main sur transform et
+    // opacity (une animation CSS passe avant le style de l'élément) et bloque le glissé suivant.
+    list.addEventListener('animationend', e => e.target.classList?.remove('entering'));
+
     q.addEventListener('input', render);
     list.addEventListener('mousemove', e => {
-      const r = e.target.closest('.row');
-      if (r && +r.dataset.i !== sel) select(+r.dataset.i);
+      const i = indexOf(e.target.closest('.row:not(.leaving)'));
+      if (i >= 0 && i !== sel) select(i);
     });
     list.addEventListener('click', e => {
-      const r = e.target.closest('.row');
-      if (r) launch(+r.dataset.i);
+      const i = indexOf(e.target.closest('.row:not(.leaving)'));
+      if (i >= 0) launch(i);
     });
     // Icône illisible : on garde l'initiale.
     list.addEventListener('error', e => {
       const img = e.target;
-      if (img.tagName !== 'IMG') return;
-      const d = document.createElement('div');
-      d.className = 'ic letter';
-      d.textContent = img.closest('.row')?.querySelector('.name')?.textContent[0] || '?';
-      img.replaceWith(d);
+      if (img.tagName === 'IMG')
+        img.replaceWith(letter(img.closest('.row')?.querySelector('.name')?.textContent || '?'));
     }, true);
 
     addEventListener('keydown', e => {
@@ -167,6 +283,12 @@
       if (e.data === 'shown') { q.value = ''; render(); q.focus(); return; }
       if (e.data?.type === 'apps') {
         apps = e.data.items.map(a => ({ ...a, key: norm(a.name) }));
+        // Une appli désinstallée perd sa ligne ; une icône changée se redessine.
+        for (const [id, el] of nodes) {
+          const a = apps.find(x => x.id === id);
+          const src = el.querySelector('img')?.getAttribute('src') ?? '';
+          if (!a || src !== (a.icon || '')) { el.remove(); nodes.delete(id); }
+        }
         render();
       }
     });
