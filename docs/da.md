@@ -182,8 +182,10 @@ de la barre des tâches), coins intérieurs arrondis à 18. Sa place est réserv
 
 **Tiroirs** — tout panneau est un **tiroir qui sort du cadre** : bord collé droit, **congés concaves** (rayon 18)
 là où il rejoint le cadre, coins arrondis côté libre. Cadre et tiroirs sont un même verre (voile `--surface` sur
-le flou), d'un seul tenant, sans trait de contour. Un tiroir latéral pleine hauteur remplace les coins du cadre de
-son côté par ses propres congés. Un tiroir ne fait que **glisser** depuis son bord, de dessous le cadre
+le flou), d'un seul tenant, sans trait de contour. Le **cadre est plus couvrant** (voile à 0,84, la valeur
+`--surface`) que les tiroirs (0,62) : là où un tiroir touche le cadre, son voile **fond sur 16** de l'opacité du
+cadre à la sienne (coins en onglet), pour qu'aucune frontière ne marque la jonction. Un tiroir latéral pleine
+hauteur remplace les coins du cadre de son côté par ses propres congés. Un tiroir ne fait que **glisser** depuis son bord, de dessous le cadre
 (section 11) : sa forme et son contenu ne bougent pas. Masqué au repos.
 
 **Barre** — verticale, collée au bord gauche, pleine hauteur, largeur 56. Révélée quand le curseur touche le bord
@@ -209,8 +211,9 @@ curseur touche le haut d'un écran, **sur cet écran**. Un contrôle segmenté e
 - **Météo** : conditions actuelles, prévisions par heure et par jour.
 
 **Lanceur** — tiroir collé au bas de la zone de travail (au-dessus de la barre des tâches de Windows), centré,
-largeur 560, rayon 18. S'ouvre par le logo Azuria de la barre (plus tard aussi par la touche Windows), sur l'écran
-du curseur ; pas d'ouverture au survol, le bas de l'écran étant pris par la barre des tâches. Champ de recherche
+largeur 560, rayon 18. S'ouvre par le logo Azuria de la barre ou la **touche Windows** (seule, ou Ctrl+Échap), qui
+n'ouvre plus le menu Démarrer ; les raccourcis Win + touche restent ceux de Windows, et pendant un jeu en plein
+écran la touche retrouve son comportement normal. Il s'ouvre sur l'écran du curseur ; pas d'ouverture au survol, le bas de l'écran étant pris par la barre des tâches. Champ de recherche
 en tête (il a le focus à l'ouverture), puis les applications. La même recherche trouvera les applications, les
 fichiers, les réglages et les actions (éteindre, verrouiller…). Se range sur Échap ou au clic ailleurs.
 
