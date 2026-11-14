@@ -41,7 +41,7 @@ internal sealed class ShellContext : ApplicationContext
         AppDomain.CurrentDomain.ProcessExit += (_, _) => RestoreWindows();
         AppDomain.CurrentDomain.UnhandledException += (_, _) => RestoreWindows();
 
-        var bar = new SidePanelWindow("left.html", right: false, widthLogical: 56);       // barre principale
+        var bar = new SidePanelWindow("left.html", right: false, widthLogical: 48);       // barre principale
         var dashboard = new DashboardWindow();                                            // haut
         var sidebar = new SidePanelWindow("right.html", right: true, widthLogical: 200);  // réglages + notifs
         var launcher = new LauncherWindow();                                              // bas

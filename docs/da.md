@@ -201,7 +201,7 @@ souris s'y pose (pas en la traversant, pas sans mouvement de souris, pas bouton 
 jeu ni d'un menu ou du lanceur). Les coins des applis restent ceux de Windows (8) : Windows ne permet pas d'en changer le
 rayon sans injection ; avec 10 de marge, ils sont concentriques aux coins de 18 du cadre.
 
-**Barre** — verticale, collée au bord gauche, pleine hauteur, largeur 56. Révélée quand le curseur touche le bord
+**Barre** — verticale, collée au bord gauche, pleine hauteur, largeur 48. Révélée quand le curseur touche le bord
 gauche. Elle **remplace la barre des tâches de Windows**, masquée tant qu'Azuria tourne et rendue à sa sortie.
 De haut en bas :
 
