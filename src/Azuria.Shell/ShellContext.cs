@@ -20,6 +20,9 @@ internal sealed class ShellContext : ApplicationContext
     private readonly StartKey? _startKey;
     private readonly Tiler _tiler = new();
     private readonly Catalog _catalog;
+    private readonly DashboardFeed? _dashboardFeed;
+    private readonly RightPanelFeed? _rightFeed;
+    private readonly BarFeed? _barFeed;
     private readonly System.Windows.Forms.Timer _fullScreenWatch = new() { Interval = 250 };
 
     public ShellContext()
@@ -43,7 +46,10 @@ internal sealed class ShellContext : ApplicationContext
 
         var bar = new SidePanelWindow("left.html", right: false, widthLogical: 48);       // barre principale
         var dashboard = new DashboardWindow();                                            // haut
-        var sidebar = new SidePanelWindow("right.html", right: true, widthLogical: 200);  // réglages + notifs
+        _dashboardFeed = new DashboardFeed(dashboard);                                    // média, mesures, météo
+        var sidebar = new SidePanelWindow("right.html", right: true, widthLogical: 280);  // réglages + notifs
+        _rightFeed = new RightPanelFeed(sidebar, Shutdown);                               // réglages, notifs, session
+        _barFeed = new BarFeed(bar);                                                      // bureaux, état
         var launcher = new LauncherWindow();                                              // bas
 
         // La barre gauche remplace la barre des tâches de Windows : elle liste les applis ouvertes.
@@ -54,7 +60,8 @@ internal sealed class ShellContext : ApplicationContext
         bar.MessageReceived += msg =>
         {
             if (msg == "launcher") launcher.Toggle(Cursor.Position);   // le logo ouvre / range le lanceur
-            else if (msg == "quit") Shutdown();                        // bouton d'alimentation (provisoire)
+            else if (msg == "quit") Shutdown();
+            else if (msg == "panel") sidebar.Reveal(pinned: true);     // état, alimentation : le panneau droit
             else if (msg == "apps") SendApps(bar);                     // la page est prête
             else if (msg.StartsWith("app:") && long.TryParse(msg[4..], out long h))
             {
@@ -112,6 +119,9 @@ internal sealed class ShellContext : ApplicationContext
         _fullScreenWatch.Stop();
         _startKey?.Dispose();
         _tiler.Dispose();
+        _dashboardFeed?.Dispose();
+        _rightFeed?.Dispose();
+        _barFeed?.Dispose();
         _apps?.Dispose();
         _taskbar?.Dispose();
         DisposeSurfaces();

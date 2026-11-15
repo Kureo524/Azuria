@@ -44,6 +44,13 @@
     .clock .date { font-family: var(--font); font-weight: 400; font-size: 10px; color: var(--text-3); margin-top: 5px; }
 
     .status { display: flex; flex-direction: column; gap: 2px; }
+    .desk.add { color: var(--text-3); }
+    .desk.add .i { width: 14px; height: 14px; }
+    .btn.warn { color: var(--warning); }
+    .bat { display: flex; flex-direction: column; gap: 1px; height: 46px; }
+    .bat .pct { font-family: var(--font-mono); font-size: 9px; line-height: 1; }
+    .bat.low { color: var(--warning); }
+    .bat.critical { color: var(--danger); }
 
     /* Applis ouvertes (remplacent la barre des tâches de Windows) */
     .apps {
@@ -64,7 +71,7 @@
 <body>
   <script src="drawer.js"></script>
   <div class="content bar">
-    <div class="btn logo" id="logo" title="Applications">A</div>
+    <div class="btn logo" id="logo">A</div>
     <div class="sep"></div>
 
     <div class="desks" id="desks"></div>
@@ -81,36 +88,74 @@
 
     <div class="sep"></div>
 
-    <div class="status">
-      <div class="btn" title="Réseau">
-        <svg class="i" viewBox="0 0 24 24"><path d="M3 9.5a14 14 0 0 1 18 0"/><path d="M6 13a9.5 9.5 0 0 1 12 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="0.9" fill="currentColor" stroke="none"/></svg>
-      </div>
-      <div class="btn" title="Son">
-        <svg class="i" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path d="M18 7a7 7 0 0 1 0 10"/></svg>
-      </div>
-      <div class="btn" title="Batterie">
-        <svg class="i" viewBox="0 0 24 24"><rect x="3" y="7.5" width="16" height="9" rx="2"/><path d="M21 11v2"/><rect x="5" y="9.5" width="9" height="5" rx="0.8" fill="currentColor" stroke="none"/></svg>
-      </div>
+    <div class="status" id="status">
+      <div class="btn" id="st-net"></div>
+      <div class="btn" id="st-snd"></div>
+      <div class="btn bat" id="st-bat" hidden></div>
     </div>
 
-    <div class="btn power" id="power" title="Quitter Azuria">
+    <div class="btn power" id="power">
       <svg class="i" viewBox="0 0 24 24"><path d="M12 3.5v8"/><path d="M7 6.5a7.5 7.5 0 1 0 10 0"/></svg>
     </div>
   </div>
 
   <script>
-    // Bureaux factices (les vrais bureaux virtuels viendront du C#).
-    const desks = [1, 2, 3, 4];
-    document.getElementById('desks').innerHTML =
-      desks.map((n, i) => `<div class="desk${i === 0 ? ' active' : ''}">${n}</div>`).join('');
+    const send = m => window.chrome?.webview?.postMessage(m);
+    const svg = body => `<svg class="i" viewBox="0 0 24 24">${body}</svg>`;
+
+    // Bureaux virtuels de Windows : un clic y va, « + » en crée un (géré par le C#, BarFeed).
+    const desksEl = document.getElementById('desks');
+    desksEl.addEventListener('click', e => {
+      const d = e.target.closest('.desk');
+      if (d) send(d.dataset.i === 'new' ? 'desk:new' : 'desk:' + d.dataset.i);
+    });
+    function renderDesks(d) {
+      let html = '';
+      for (let i = 0; i < d.count; i++) html += `<div class="desk${i === d.current ? ' active' : ''}" data-i="${i}">${i + 1}</div>`;
+      html += `<div class="desk add" data-i="new">${svg('<path d="M12 7v10M7 12h10"/>')}</div>`;
+      desksEl.innerHTML = html;
+    }
+    renderDesks({ count: 1, current: 0 });
+
+    // Icônes d'état : réseau, son, batterie. Un clic ouvre le panneau droit (réglages rapides).
+    const NET = {
+      none: '<path d="M3 9.5a14 14 0 0 1 18 0"/><path d="M6 13a9.5 9.5 0 0 1 12 0"/><path d="M4 4l16 16"/>',
+      ethernet: '<rect x="8" y="3.5" width="8" height="6" rx="1"/><path d="M12 9.5v4M5 20.5v-4h14v4M12 13.5v7"/>',
+      wifi: s => `<path d="M3 9.5a14 14 0 0 1 18 0"${s < 75 ? ' opacity="0.3"' : ''}/><path d="M6 13a9.5 9.5 0 0 1 12 0"${s < 45 ? ' opacity="0.3"' : ''}/><path d="M9 16.5a5 5 0 0 1 6 0"${s < 20 ? ' opacity="0.3"' : ''}/><circle cx="12" cy="19.5" r="0.9" fill="currentColor" stroke="none"/>`,
+    };
+    const SND = {
+      off: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
+      low: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/>',
+      high: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path d="M18 7a7 7 0 0 1 0 10"/>',
+    };
+    function battery(pct, charging) {
+      const w = Math.max(1, Math.round(11 * pct / 100));
+      return `<rect x="3" y="7.5" width="16" height="9" rx="2"/><path d="M21 11v2"/>` +
+             `<rect x="5" y="9.5" width="${w}" height="5" rx="0.8" fill="currentColor" stroke="none"/>` +
+             (charging ? '<path d="M12.5 5l-3 7h4l-3 7" stroke-width="1.4"/>' : '');
+    }
+    function renderStatus(s) {
+      renderDesks(s.desks);
+      const net = document.getElementById('st-net');
+      net.innerHTML = svg(s.net.kind === 'wifi' ? NET.wifi(s.net.signal) : NET[s.net.kind] || NET.none);
+      net.classList.toggle('warn', s.net.kind === 'none');
+      const v = s.volume;
+      document.getElementById('st-snd').innerHTML = svg(v == null || s.muted || v === 0 ? SND.off : v < 50 ? SND.low : SND.high);
+      const bat = document.getElementById('st-bat');
+      bat.hidden = s.battery == null;
+      if (s.battery != null) {
+        bat.innerHTML = svg(battery(s.battery, s.charging)) + `<span class="pct">${s.battery}</span>`;
+        bat.classList.toggle('low', !s.charging && s.battery <= 20);
+        bat.classList.toggle('critical', !s.charging && s.battery <= 10);
+      }
+    }
+    document.getElementById('status').addEventListener('click', () => send('panel'));
+
+    // Bouton de session : ouvre le panneau droit, qui porte les actions (verrouiller, éteindre…).
+    document.getElementById('power').addEventListener('click', () => send('panel'));
 
     // Le logo ouvre / range le lanceur (géré par le C#).
-    document.getElementById('logo').addEventListener('click',
-      () => window.chrome?.webview?.postMessage('launcher'));
-
-    // Bouton d'alimentation : quitte Azuria (provisoire, en attendant l'écran de session, DA §9).
-    document.getElementById('power').addEventListener('click',
-      () => window.chrome?.webview?.postMessage('quit'));
+    document.getElementById('logo').addEventListener('click', () => send('launcher'));
 
     // Applis ouvertes : la liste vient du C# ; un clic active l'appli (ou la réduit si elle est
     // déjà au premier plan, comme la barre des tâches).
@@ -118,6 +163,7 @@
     const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     window.chrome?.webview?.addEventListener('message', e => {
       const m = e.data;
+      if (m?.type === 'status') { renderStatus(m); return; }
       if (m?.type !== 'apps') return;
       document.getElementById('apps-sep').hidden = m.items.length === 0;
       apps.innerHTML = m.items.map(a =>
@@ -129,7 +175,8 @@
       const b = e.target.closest('.app');
       if (b) window.chrome?.webview?.postMessage('app:' + b.dataset.id);
     });
-    window.chrome?.webview?.postMessage('apps');
+    send('apps');
+    send('status');
 
     // Heure verticale + date courte.
     const mois = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];

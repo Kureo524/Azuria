@@ -57,6 +57,8 @@ internal class GlassWindow : Form
     private bool _shownState;
     private bool _geometryReady;
     private bool _animating;
+    private bool _pinned;      // ouvert sur commande, indépendamment du curseur
+    private long _pinnedAt;
 
     // Survol (sondage du curseur) et stabilisation après le premier affichage
     private readonly System.Windows.Forms.Timer _hover = new() { Interval = 30 };
@@ -65,6 +67,7 @@ internal class GlassWindow : Form
 
     [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vk);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int cx, int cy, uint flags);
     private const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
     private static readonly nint HWND_TOPMOST = -1;
@@ -213,10 +216,15 @@ internal class GlassWindow : Form
     /// <summary>Envoie un message JSON à la page (<c>chrome.webview</c>, évènement « message »).</summary>
     public void PostJson(string json) => _web.CoreWebView2?.PostWebMessageAsJson(json);
 
-    /// <summary>Révèle le tiroir (sur commande).</summary>
-    public void Reveal()
+    /// <summary>
+    /// Révèle le tiroir (sur commande). <paramref name="pinned"/> : il reste ouvert même si le curseur
+    /// n'est pas dessus, jusqu'à ce qu'il y entre puis en sorte, ou qu'on clique ailleurs.
+    /// </summary>
+    public void Reveal(bool pinned = false)
     {
-        if (_geometryReady && !_animating && !_shownState && !Suspended) Slide(true);
+        if (!_geometryReady || _animating || Suspended) return;
+        if (pinned) { _pinned = true; _pinnedAt = Environment.TickCount64; }
+        if (!_shownState) Slide(true);
     }
 
     /// <summary>Range le tiroir (sur commande).</summary>
@@ -315,6 +323,18 @@ internal class GlassWindow : Form
         }
         GetCursorPos(out POINT p);
         var cursor = new Point(p.X, p.Y);
+        // Ouvert sur commande (« épinglé ») : reste ouvert jusqu'à ce que le curseur y entre puis en
+        // sorte, ou qu'on clique ailleurs.
+        if (_pinned)
+        {
+            if (!_shownState || _keepZone.Contains(cursor)) _pinned = false;
+            else if (GetAsyncKeyState(0x01 /* VK_LBUTTON */) < 0 && Environment.TickCount64 - _pinnedAt > 400)
+            {
+                _pinned = false;
+                Slide(false);
+            }
+            return;
+        }
         Rectangle hot = _shownState ? _keepZone : _triggerZone;
         bool want = hot.Contains(cursor);
         if (want != _shownState)

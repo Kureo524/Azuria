@@ -206,13 +206,15 @@ gauche. Elle **remplace la barre des tâches de Windows**, masquée tant qu'Azur
 De haut en bas :
 
 - le logo Azuria (ouvre le lanceur) ;
-- les bureaux, empilés (32 × 32, rayon 9, SemiBold ; actif : fond `--accent-soft`, texte `--accent`) ;
+- les **bureaux virtuels de Windows**, empilés (32 × 32, rayon 9, SemiBold ; actif : fond `--accent-soft`, texte
+  `--accent`) ; un clic y va, « + » en crée un ;
 - les **applis ouvertes** (icône 24 dans un bouton 40, rayon 11, nom en infobulle) ; celle au premier plan prend le
   fond `--accent-soft` et un repère `--accent` de 3 au bord gauche. Un clic l'active, un clic sur celle au premier
   plan la réduit ;
 - l'heure en vertical (heures au-dessus des minutes, Barlow Condensed) et la date courte ;
-- les icônes d'état (réseau, son, batterie) ;
-- le bouton de session (prend `--danger` au survol seulement). En attendant l'écran de session, il quitte Azuria.
+- les icônes d'état (réseau et force du Wi-Fi, son, batterie avec son pourcentage, `--warning` sous 20 %, `--danger` sous
+  10 %) ; un clic ouvre le panneau droit ;
+- le bouton de session (prend `--danger` au survol seulement) : il ouvre le panneau droit et sa rangée de session.
 - Séparateurs horizontaux 24 × 1 en `--border-strong` entre les groupes.
 
 **Tableau de bord** — tiroir collé au bord haut, centré, rayon 18, largeur 640 (720 au plus). Il descend quand le
@@ -222,6 +224,10 @@ curseur touche le haut d'un écran, **sur cet écran**. Un contrôle segmenté e
 - **Média** : pochette, titre, progression, commandes ; sortie audio.
 - **Performances** : processeur, carte graphique, mémoire, disques, réseau, batterie.
 - **Météo** : conditions actuelles, prévisions par heure et par jour.
+
+Les données sont réelles : lecteur en cours par les contrôles multimédias de Windows (commandes et position
+comprises), mesures par les compteurs de Windows (une par seconde, seulement tableau de bord ouvert), météo
+d'Open-Meteo à la position de Windows arrondie à 10 km (mise à jour toutes les 30 min au plus, gardée en cache).
 
 **Lanceur** — tiroir collé au bas de la zone de travail (au-dessus de la barre des tâches de Windows), centré,
 largeur 560, rayon 18. S'ouvre par le logo Azuria de la barre ou la **touche Windows** (seule, ou Ctrl+Échap), qui
@@ -235,10 +241,14 @@ en 0,14 s. ↑ ↓ pour choisir, Entrée ou clic pour lancer. Les **jeux install
 Riot Games) sont lancés par leur launcher, qui s'ouvre en arrière-plan. La même recherche trouvera plus tard les
 fichiers, les réglages et les actions (éteindre, verrouiller…). Se range sur Échap ou au clic ailleurs.
 
-**Panneau droit** — notifications et réglages rapides. Tiroir collé au bord droit, pleine hauteur, largeur 200,
-révélé quand le curseur touche le bord droit. En haut les réglages rapides (Wi-Fi, Bluetooth, mode jeu, ne pas
-déranger, curseurs de volume et de luminosité), en dessous les notifications groupées par application, avec
-« tout effacer ».
+**Panneau droit** — réglages rapides, notifications et session. Tiroir collé au bord droit, pleine hauteur,
+largeur 280, révélé quand le curseur touche le bord droit, ou ouvert par les icônes d'état et le bouton de session
+de la barre (il reste alors ouvert jusqu'à ce que le curseur y passe, ou qu'on clique ailleurs). De haut en bas :
+bascules Wi-Fi (avec le nom du réseau), Bluetooth, micro, mode jeu ; curseurs de volume (l'icône coupe le son) et
+de luminosité (écran intégré seulement) ; les **notifications de Windows** groupées par appli, « × » au survol et
+« tout effacer » ; la rangée de session (verrouiller, veille, se déconnecter, redémarrer, éteindre, quitter Azuria),
+où les actions qui ferment la session demandent un second clic. « Ne pas déranger » n'a pas d'API publique dans
+Windows : la bascule micro le remplace.
 
 **Notification** — apparaît en haut à droite : largeur 360, rayon 14. Icône, titre Bold, texte
 `--text-2`, actions en boutons compacts. Disparaît après 5 s et reste dans le panneau droit.
