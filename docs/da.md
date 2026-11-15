@@ -241,6 +241,13 @@ en 0,14 s. ↑ ↓ pour choisir, Entrée ou clic pour lancer. Les **jeux install
 Riot Games) sont lancés par leur launcher, qui s'ouvre en arrière-plan. La même recherche trouvera plus tard les
 fichiers, les réglages et les actions (éteindre, verrouiller…). Se range sur Échap ou au clic ailleurs.
 
+**Commandes du lanceur** — une recherche qui commence par **`>`** liste les commandes (mêmes lignes, icône au trait
+20 dans une case `--surface-raised` rayon 8) ; Entrée, Tab ou clic complète la commande dans le champ, et ce qui suit
+son nom filtre sa liste. **`>wallpaper`** liste les images du dossier `Images\Wallpaper` de l'utilisateur
+(miniature 56 × 32 rayon 6, nom, « Fond d'écran », ou « Fond d'écran actuel » en `--accent-text`) ; Entrée ou clic
+pose le fond tout de suite sur tous les écrans, par l'API de Windows, et le lanceur reste ouvert pour en essayer un
+autre. Dossier absent ou vide : la ligne de message le dit, avec le chemin.
+
 **Panneau droit** — réglages rapides, notifications et session. Tiroir collé au bord droit, pleine hauteur,
 largeur 280, révélé quand le curseur touche le bord droit, ou ouvert par les icônes d'état et le bouton de session
 de la barre (il reste alors ouvert jusqu'à ce que le curseur y passe, ou qu'on clique ailleurs). De haut en bas :
