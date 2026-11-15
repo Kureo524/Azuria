@@ -22,7 +22,7 @@
     }
     /* Peu de résultats : ils se posent juste au-dessus du champ. */
     .list::before { content: ""; flex: 1 1 auto; }
-    .list::-webkit-scrollbar { width: 6px; }
+    .list::-webkit-scrollbar { width: 6px; height: 6px; }
     .list::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 3px; }
 
     /* Ligne de liste (DA §10) : rayon 10, survol --hover, élément courant --accent-soft. */
@@ -45,8 +45,26 @@
     }
     .ic.glyph .i { width: 20px; height: 20px; }
     .row.sel .ic.glyph { color: var(--accent); }
-    /* Fond d'écran : miniature au format de l'écran. */
-    .ic.thumb { width: 56px; height: 32px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+    /* >wallpaper : une bande de cartes qui défile à l'horizontale, posée contre le champ. Chaque carte
+       est une miniature au format de l'écran, son nom, et « Actuel » pour le fond posé. */
+    .list.strip {
+      flex-direction: row; align-items: flex-end; gap: 6px;
+      overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; /* place de la barre de défilement */
+    }
+    .list.strip::before { display: none; }
+    .list.strip .empty { flex: 1 1 auto; }
+    .row.card {
+      flex-direction: column; align-items: stretch; gap: 6px;
+      width: 168px; height: auto; padding: 6px;
+    }
+    .card .thumb {
+      display: block; width: 156px; height: 88px; object-fit: cover;
+      border-radius: 6px; border: 1px solid var(--border); background: var(--surface-raised);
+    }
+    .card .thumb.letter { display: grid; place-items: center; color: var(--text-3); font-weight: 700; }
+    .card .txt { padding: 0 2px 2px; }
+    .card .name { font-size: 12px; }
+    .card .sub { min-height: 13px; }
     .row.cur .sub { color: var(--accent-text); }
     .txt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
     .name { font-size: 13px; font-weight: 600; color: var(--text);
@@ -110,6 +128,8 @@
     let apps = null;          // [{ id, name, sub, icon, game, key }]
     let walls = null;         // { folder, missing, items: [{ id, kind, path, name, sub, thumb, cur, key }] }
     let wallsAsked = false;   // liste des fonds redemandée une fois par ouverture
+    let previewing = null;    // chemin du fond en aperçu (le C# le retire à la fermeture)
+    let previewTimer = 0;
     let shown = [];           // résultats affichés, dans l'ordre
     let sel = 0;
     const nodes = new Map();  // id → ligne : chaque appli garde la sienne d'un filtrage à l'autre
@@ -136,7 +156,8 @@
       if (!wallsAsked) { wallsAsked = true; view?.postMessage('wallpapers'); }
       if (!walls) return { items: [], empty: "Chargement des fonds d'écran…" };
       if (walls.missing) return { items: [], empty: 'Dossier introuvable : ' + walls.folder };
-      return { items: walls.items, empty: walls.items.length ? 'Aucun fond ne correspond' : 'Aucune image dans ' + walls.folder };
+      return { items: walls.items, layout: 'strip',
+               empty: walls.items.length ? 'Aucun fond ne correspond' : 'Aucune image dans ' + walls.folder };
     }
 
     // Ce que la recherche montre : les applis, la liste des commandes, ou la liste d'une commande.
@@ -158,11 +179,13 @@
         return el;
       }
       el = document.createElement('div');
-      el.className = 'row';
+      el.className = a.kind === 'wall' ? 'row card' : 'row';
       el.classList.toggle('cur', !!a.cur);
       el.dataset.id = a.id;
-      const ic = a.glyph ? Object.assign(document.createElement('div'), { className: 'ic glyph', innerHTML: a.glyph })
-               : a.thumb ? Object.assign(document.createElement('img'), { className: 'ic thumb', src: a.thumb, alt: '' })
+      const ic = a.kind === 'wall'
+               ? (a.thumb ? Object.assign(document.createElement('img'), { className: 'thumb', src: a.thumb, alt: '' })
+                          : Object.assign(document.createElement('div'), { className: 'thumb letter', textContent: a.name[0] || '?' }))
+               : a.glyph ? Object.assign(document.createElement('div'), { className: 'ic glyph', innerHTML: a.glyph })
                : a.icon ? Object.assign(document.createElement('img'), { className: 'ic', src: a.icon, alt: '' })
                : letter(a.name);
       const txt = document.createElement('div');
@@ -190,7 +213,21 @@
       const next = src.items.map(a => [score(a, term), a]).filter(([s]) => s >= 0)
                        .sort((x, y) => x[0] - y[0] || x[1].name.localeCompare(y[1].name, 'fr'))
                        .map(([, a]) => a);
-      const animate = !reduced.matches && list.isConnected;
+      // Bande de fonds d'écran (horizontale) ou liste : un changement de disposition repart de zéro,
+      // sans glissé (les places d'avant n'ont plus de sens).
+      const strip = src.layout === 'strip';
+      if (strip !== list.classList.contains('strip')) {
+        for (const el of [...list.children]) {
+          el.remove();
+          el.classList.remove('leaving', 'entering', 'moving');
+          el.style.transform = ''; el.style.top = '';
+        }
+        list.classList.toggle('strip', strip);
+      }
+      // Sortie de >wallpaper en cours d'aperçu : le fond d'avant revient.
+      if (!strip) cancelPreview(true);
+      const fade = !reduced.matches && list.isConnected;
+      const animate = fade && !strip; // la bande ne fait que le fondu d'arrivée
 
       // 1. Avant : position de chaque ligne visible.
       const before = new Map();
@@ -222,7 +259,7 @@
         if (wasLeaving) { el.classList.remove('leaving'); el.style.top = ''; }
         if (!before.has(el) || wasLeaving) {
           el.classList.remove('entering');
-          if (animate) { void el.offsetWidth; el.classList.add('entering'); }
+          if (fade) { void el.offsetWidth; el.classList.add('entering'); }
         }
         skipLeaving();
         if (el === cursor) cursor = cursor.nextElementSibling;
@@ -230,9 +267,12 @@
       }
 
       shown = next;
-      sel = 0;
+      // Dans la bande, l'élément courant est le fond posé : rien ne change tant qu'on ne bouge pas.
+      sel = strip ? Math.max(0, next.findIndex(a => a.cur)) : 0;
       list.scrollTop = 0;
+      list.scrollLeft = 0;
       paintSel();
+      if (strip && next[sel]) nodes.get(next[sel].id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       fit();
 
       // 4. Après : chaque ligne restée repart de son ancienne place et glisse vers la nouvelle.
@@ -266,8 +306,14 @@
       const cs = getComputedStyle(launchEl), ls = getComputedStyle(list);
       const items = [...list.children].filter(el => !el.classList.contains('leaving'));
       let rows = 0;
-      for (const el of items) rows += el.offsetHeight;
-      rows += Math.max(0, items.length - 1) * parseFloat(ls.rowGap || 0);
+      if (list.classList.contains('strip')) {
+        // Bande : la carte la plus haute, et la place de la barre de défilement.
+        for (const el of items) rows = Math.max(rows, el.offsetHeight);
+        rows += parseFloat(ls.paddingTop) + parseFloat(ls.paddingBottom);
+      } else {
+        for (const el of items) rows += el.offsetHeight;
+        rows += Math.max(0, items.length - 1) * parseFloat(ls.rowGap || 0);
+      }
       const h = Math.ceil(parseFloat(cs.paddingTop) + rows + parseFloat(cs.rowGap || 0)
                           + searchEl.offsetHeight + parseFloat(cs.paddingBottom));
       if (h === lastHeight) return;
@@ -278,20 +324,44 @@
       launchEl.style.clipPath = `inset(${innerHeight - glass}px 0 0 0)`;
     }
 
+    // Choix d'un élément par l'utilisateur (souris, flèches) : un fond d'écran passe en aperçu.
     function select(i) {
       if (!shown.length) return;
       sel = Math.max(0, Math.min(shown.length - 1, i));
       paintSel();
-      nodes.get(shown[sel].id)?.scrollIntoView({ block: 'nearest' });
+      nodes.get(shown[sel].id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      preview(shown[sel]);
     }
 
-    // Entrée ou clic : une commande se complète dans le champ, un fond se pose tout de suite (le
-    // lanceur reste ouvert pour en essayer un autre), une appli se lance.
+    // Aperçu : le fond change sous le lanceur sans rien enregistrer. Un court délai évite de poser
+    // chaque fond survolé en balayant la bande.
+    function preview(a) {
+      clearTimeout(previewTimer);
+      if (a?.kind !== 'wall' || a.path === previewing) return;
+      previewTimer = setTimeout(() => {
+        previewing = a.path;
+        view?.postMessage('wallpaper-preview:' + a.path);
+      }, 120);
+    }
+
+    // Fin de l'aperçu ; avec `revert`, le fond d'avant revient (le C# le fait aussi à la fermeture).
+    function cancelPreview(revert) {
+      clearTimeout(previewTimer);
+      if (previewing && revert) view?.postMessage('wallpaper-revert');
+      previewing = null;
+    }
+
+    // Entrée ou clic : une commande se complète dans le champ, un fond est posé pour de bon (tous les
+    // écrans, tous les bureaux) et le lanceur se range, une appli se lance.
     function launch(i) {
       const a = shown[i];
       if (!a) return;
       if (a.kind === 'cmd') complete(a);
-      else if (a.kind === 'wall') view?.postMessage('wallpaper:' + a.path);
+      else if (a.kind === 'wall') {
+        cancelPreview(false);
+        view?.postMessage('wallpaper:' + a.path);
+        view?.postMessage('close');
+      }
       else view?.postMessage('launch:' + a.id);
     }
 
@@ -306,7 +376,7 @@
         folder: data.folder, missing: data.missing,
         items: data.items.map(w => ({
           id: 'wall:' + w.path, kind: 'wall', path: w.path, name: w.name, thumb: w.thumb, cur: w.current,
-          sub: w.current ? "Fond d'écran actuel" : "Fond d'écran", key: norm(w.name),
+          sub: w.current ? 'Actuel' : '', key: norm(w.name),
         })),
       };
       // Une image retirée perd sa ligne ; une image modifiée a une nouvelle miniature.
@@ -323,7 +393,7 @@
       const cur = new Set(paths.map(p => p.toLowerCase()));
       for (const w of walls.items) {
         w.cur = cur.has(w.path.toLowerCase());
-        w.sub = w.cur ? "Fond d'écran actuel" : "Fond d'écran";
+        w.sub = w.cur ? 'Actuel' : '';
         if (nodes.has(w.id)) rowFor(w);
       }
     }
@@ -346,16 +416,34 @@
     // Icône illisible : on garde l'initiale.
     list.addEventListener('error', e => {
       const img = e.target;
-      if (img.tagName === 'IMG')
-        img.replaceWith(letter(img.closest('.row')?.querySelector('.name')?.textContent || '?'));
+      if (img.tagName !== 'IMG') return;
+      const name = img.closest('.row')?.querySelector('.name')?.textContent || '?';
+      img.replaceWith(img.classList.contains('thumb')
+        ? Object.assign(document.createElement('div'), { className: 'thumb letter', textContent: name[0] })
+        : letter(name));
     }, true);
 
+    // Bande des fonds : la molette la fait défiler à l'horizontale.
+    list.addEventListener('wheel', e => {
+      if (!list.classList.contains('strip') || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      list.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+
+    // Lanceur rangé par un clic ailleurs : un aperçu pas encore parti ne part plus.
+    addEventListener('blur', () => clearTimeout(previewTimer));
+
     addEventListener('keydown', e => {
-      const page = Math.max(1, Math.floor(list.clientHeight / 50));
+      const strip = list.classList.contains('strip');
+      const page = Math.max(1, strip ? Math.floor(list.clientWidth / 174) : Math.floor(list.clientHeight / 50));
       switch (e.key) {
-        case 'Escape': view?.postMessage('close'); break;                // range le lanceur (C#)
+        case 'Escape': cancelPreview(false); view?.postMessage('close'); break; // range le lanceur ; le C# rend le fond d'avant
         case 'ArrowDown': select(sel + 1); break;
         case 'ArrowUp': select(sel - 1); break;
+        case 'ArrowRight': if (!strip) return; select(sel + 1); break;     // ailleurs, le curseur du champ
+        case 'ArrowLeft': if (!strip) return; select(sel - 1); break;
+        case 'Home': if (!strip) return; select(0); break;
+        case 'End': if (!strip) return; select(shown.length - 1); break;
         case 'PageDown': select(sel + page); break;
         case 'PageUp': select(sel - page); break;
         case 'Enter': launch(sel); break;
@@ -367,7 +455,11 @@
 
     view?.addEventListener('message', e => {
       // À chaque ouverture : recherche vide, focus dans le champ.
-      if (e.data === 'shown') { q.value = ''; wallsAsked = false; render(); q.focus(); return; }
+      if (e.data === 'shown') {
+        q.value = ''; wallsAsked = false;
+        clearTimeout(previewTimer); previewing = null; // l'aperçu d'avant a été retiré à la fermeture
+        render(); q.focus(); return;
+      }
       if (e.data?.type === 'wallpapers') { setWalls(e.data); if (q.value.startsWith('>')) render(); return; }
       if (e.data?.type === 'wallpaper-current') { markCurrent(e.data.paths); return; }
       if (e.data?.type === 'apps') {

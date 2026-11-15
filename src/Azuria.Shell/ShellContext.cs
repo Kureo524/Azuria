@@ -23,6 +23,8 @@ internal sealed class ShellContext : ApplicationContext
     private readonly DashboardFeed? _dashboardFeed;
     private readonly RightPanelFeed? _rightFeed;
     private readonly BarFeed? _barFeed;
+    private readonly WallpaperFeed? _wallpaperFeed;
+    private readonly DesktopIcons? _desktopIcons;
     private readonly System.Windows.Forms.Timer _fullScreenWatch = new() { Interval = 250 };
 
     public ShellContext()
@@ -30,6 +32,7 @@ internal sealed class ShellContext : ApplicationContext
         // La barre des tâches de Windows d'abord (la place qu'elle libère revient au cadre), puis le
         // cadre : il réserve sa place, les tiroirs se calent ensuite sur la zone restante.
         _taskbar = new Taskbar();
+        _desktopIcons = new DesktopIcons(); // le bureau n'a pas d'icônes (DA §7)
         BuildSurfaces();
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         // Appli plein écran (un jeu) : le verre de son écran se masque, les tiroirs sont suspendus.
@@ -51,6 +54,7 @@ internal sealed class ShellContext : ApplicationContext
         _rightFeed = new RightPanelFeed(sidebar, Shutdown);                               // réglages, notifs, session
         _barFeed = new BarFeed(bar);                                                      // bureaux, état
         var launcher = new LauncherWindow();                                              // bas
+        _wallpaperFeed = new WallpaperFeed(launcher);                                     // commande >wallpaper
 
         // La barre gauche remplace la barre des tâches de Windows : elle liste les applis ouvertes.
         _apps = new OpenWindows();
@@ -81,8 +85,6 @@ internal sealed class ShellContext : ApplicationContext
             {
                 if (_catalog.Launch(msg[7..])) launcher.Conceal();
             }
-            else if (msg == "wallpapers") SendWallpapers(launcher);    // commande >wallpaper
-            else if (msg.StartsWith("wallpaper:")) SetWallpaper(launcher, msg[10..]);
         };
         _catalog.Refresh(TimeSpan.Zero);
 
@@ -124,6 +126,8 @@ internal sealed class ShellContext : ApplicationContext
         _dashboardFeed?.Dispose();
         _rightFeed?.Dispose();
         _barFeed?.Dispose();
+        _wallpaperFeed?.Dispose();
+        _desktopIcons?.Dispose();
         _apps?.Dispose();
         _taskbar?.Dispose();
         DisposeSurfaces();
@@ -136,6 +140,7 @@ internal sealed class ShellContext : ApplicationContext
     {
         foreach (var s in _surfaces) s.ReleaseReservation();
         _taskbar?.Restore();
+        _desktopIcons?.Restore();
     }
 
     // La liste des applis ouvertes, envoyée à la barre (icônes en PNG, la page dessine le reste).
@@ -151,34 +156,6 @@ internal sealed class ShellContext : ApplicationContext
     {
         var items = _catalog.Entries.Select(e => new { id = e.Id, name = e.Name, sub = e.Sub, icon = e.Icon, game = e.Game });
         launcher.PostJson(JsonSerializer.Serialize(new { type = "apps", items }));
-    }
-
-    // Les images de la dernière lecture du dossier : seules celles-là peuvent être posées en fond.
-    private HashSet<string> _wallpapers = new(StringComparer.OrdinalIgnoreCase);
-
-    // Commande >wallpaper : les images du dossier, et celles posées en ce moment.
-    private async void SendWallpapers(GlassWindow launcher)
-    {
-        string folder = Wallpapers.Folder;
-        var (items, current) = await Wallpapers.ScanAsync(folder);
-        if (_down) return;
-        _wallpapers = items.Select(w => w.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        launcher.PostJson(JsonSerializer.Serialize(new
-        {
-            type = "wallpapers",
-            folder,
-            missing = !Directory.Exists(folder),
-            items = items.Select(w => new { path = w.Path, name = w.Name, thumb = w.Thumb, current = current.Contains(w.Path) }),
-        }));
-    }
-
-    // Pose le fond choisi tout de suite ; le lanceur reste ouvert pour en essayer un autre.
-    private async void SetWallpaper(GlassWindow launcher, string path)
-    {
-        if (!_wallpapers.Contains(path) || !File.Exists(path)) return;
-        var current = await Wallpapers.SetAsync(path);
-        if (_down) return;
-        launcher.PostJson(JsonSerializer.Serialize(new { type = "wallpaper-current", paths = current }));
     }
 
     // Le verre d'un tiroir est dessiné par la surface de son écran, et seulement elle.

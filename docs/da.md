@@ -147,7 +147,11 @@ Recette de référence, exprimée en CSS :
 ## 7. Le bureau
 
 **Fond d'écran** — libre. Le fond par défaut est l'encre unie avec une seule tache d'encre diffuse en haut à
-gauche. Aucun fond animé.
+gauche. Aucun fond animé. On le choisit par la commande `>wallpaper` du lanceur (§9).
+
+**Pas d'icônes sur le bureau** — le bureau ne montre que le fond. Tant qu'Azuria tourne, les icônes de
+l'Explorateur sont cachées ; elles reviennent quand Azuria s'arrête. Les fichiers se retrouvent par l'Explorateur
+(et plus tard par la recherche du lanceur).
 
 **Fenêtres des applications** — elles se partagent l'écran sans se chevaucher (pavage), avec **12 d'écart** entre
 elles et avec la barre et les bords. La fenêtre active a une bordure de 1 en `--accent` ; les autres en
@@ -243,10 +247,13 @@ fichiers, les réglages et les actions (éteindre, verrouiller…). Se range sur
 
 **Commandes du lanceur** — une recherche qui commence par **`>`** liste les commandes (mêmes lignes, icône au trait
 20 dans une case `--surface-raised` rayon 8) ; Entrée, Tab ou clic complète la commande dans le champ, et ce qui suit
-son nom filtre sa liste. **`>wallpaper`** liste les images du dossier `Images\Wallpaper` de l'utilisateur
-(miniature 56 × 32 rayon 6, nom, « Fond d'écran », ou « Fond d'écran actuel » en `--accent-text`) ; Entrée ou clic
-pose le fond tout de suite sur tous les écrans, par l'API de Windows, et le lanceur reste ouvert pour en essayer un
-autre. Dossier absent ou vide : la ligne de message le dit, avec le chemin.
+son nom filtre sa liste. **`>wallpaper`** montre les images du dossier `Images\Wallpaper` de l'utilisateur en une
+**bande horizontale** posée contre le champ : cartes de 168 de large (miniature 156 × 88 rayon 6, nom en 12,
+« Actuel » en `--accent-text` sous le fond posé), qui défile à la molette ou aux flèches ← →. L'élément courant à
+l'ouverture est le fond posé. **Survoler ou choisir une carte la met en aperçu** : le fond change derrière le
+lanceur sans rien enregistrer (après 0,12 s, pour ne pas poser chaque carte survolée). **Entrée ou clic** pose le fond
+pour de bon, sur tous les écrans **et tous les bureaux virtuels**, et range le lanceur ; **Échap**, un clic ailleurs
+ou la sortie de la commande rendent le fond d'avant. Dossier absent ou vide : le message le dit, avec le chemin.
 
 **Panneau droit** — réglages rapides, notifications et session. Tiroir collé au bord droit, pleine hauteur,
 largeur 280, révélé quand le curseur touche le bord droit, ou ouvert par les icônes d'état et le bouton de session

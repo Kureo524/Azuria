@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Win32;
 
 namespace Azuria.Shell.Native;
 
@@ -10,16 +12,18 @@ internal sealed record WallpaperEntry(string Path, string Name, string Thumb);
 /// <summary>
 /// Les fonds d'écran de la commande <c>&gt;wallpaper</c> du lanceur : les images du dossier
 /// <c>Images\Wallpaper</c> de l'utilisateur (le dossier Images de Windows, même déplacé ou dans OneDrive).
-/// Le fond est posé par <c>IDesktopWallpaper</c>, l'API documentée de Windows pour ça (celle qu'utilise
-/// l'appli Paramètres), sur tous les écrans. Rien n'est injecté (CLAUDE.md).
+/// Le fond est posé par <c>IDesktopWallpaper</c>, l'API documentée de Windows pour ça (celle de
+/// l'appli Paramètres). Rien n'est injecté (CLAUDE.md).
+///
+/// Tout passe par un seul fil STA, dans l'ordre : lire le dossier ou changer de fond ne bloque pas
+/// l'interface, et un aperçu ne double jamais une validation.
 ///
 /// Les miniatures sont mises en cache en PNG avec les icônes du lanceur (<see cref="Catalog.IconDir"/>),
 /// nommées d'après le chemin, la date et la taille du fichier : une image modifiée a une nouvelle miniature.
-/// Tout passe sur un fil STA à part : lire le dossier ou changer de fond ne bloque pas l'interface.
 /// </summary>
 internal static class Wallpapers
 {
-    private const int ThumbPx = 160;
+    private const int ThumbPx = 320; // carte de 160 px CSS, nette jusqu'à 200 %
 
     // Formats que Windows sait poser en fond d'écran.
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase)
@@ -37,24 +41,76 @@ internal static class Wallpapers
         }
     }
 
-    /// <summary>Les images du dossier (vide s'il n'existe pas) et les fonds posés en ce moment.</summary>
-    public static Task<(List<WallpaperEntry> Items, HashSet<string> Current)> ScanAsync(string folder) => Sta.Run(() =>
+    /// <summary>Les images du dossier (vide s'il n'existe pas), triées par nom.</summary>
+    public static Task<List<WallpaperEntry>> ScanAsync(string folder) => Worker.Run(() =>
     {
         var items = new List<WallpaperEntry>();
         if (Directory.Exists(folder))
-        {
             foreach (var file in Directory.EnumerateFiles(folder))
-            {
-                if (!Extensions.Contains(System.IO.Path.GetExtension(file))) continue;
-                items.Add(new WallpaperEntry(file, System.IO.Path.GetFileNameWithoutExtension(file), Thumb(file)));
-            }
-        }
+                if (Extensions.Contains(System.IO.Path.GetExtension(file)))
+                    items.Add(new WallpaperEntry(file, System.IO.Path.GetFileNameWithoutExtension(file), Thumb(file)));
         items.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase));
-        return (items, Current());
+        return items;
     });
 
-    /// <summary>Pose l'image en fond d'écran sur tous les écrans. Rend les fonds posés après coup.</summary>
-    public static Task<HashSet<string>> SetAsync(string path) => Sta.Run(() =>
+    /// <summary>Le fond de chaque écran en ce moment (identifiant d'écran → chemin).</summary>
+    public static Task<Dictionary<string, string>> SnapshotAsync() => Worker.Run(Snapshot);
+
+    /// <summary>
+    /// Pose l'image sur tous les écrans, sans rien enregistrer d'autre (aperçu). Rend les fonds posés.
+    /// </summary>
+    public static Task<Dictionary<string, string>> PreviewAsync(string path) => Worker.Run(() =>
+    {
+        SetAll(path);
+        return Snapshot();
+    });
+
+    /// <summary>Remet chaque écran sur le fond qu'il avait (fin d'un aperçu).</summary>
+    public static Task<Dictionary<string, string>> RestoreAsync(IReadOnlyDictionary<string, string> before) => Worker.Run(() =>
+    {
+        try
+        {
+            var dw = Create();
+            try
+            {
+                foreach (var (monitor, path) in before)
+                    try { dw.SetWallpaper(monitor, path); } catch { /* écran débranché entre-temps */ }
+            }
+            finally { Marshal.ReleaseComObject(dw); }
+        }
+        catch { /* sans IDesktopWallpaper, l'aperçu n'a pas pu être posé non plus */ }
+        return Snapshot();
+    });
+
+    /// <summary>
+    /// Pose l'image pour de bon : tous les écrans, et tous les bureaux virtuels (Windows 11 garde un
+    /// fond par bureau, noté dans le registre de l'Explorateur). Rend les fonds posés.
+    /// </summary>
+    public static Task<Dictionary<string, string>> CommitAsync(string path) => Worker.Run(() =>
+    {
+        SetAll(path);
+        WriteDesktops(path);
+        return Snapshot();
+    });
+
+    /// <summary>
+    /// Fond du bureau courant différent de <paramref name="path"/> (bureau créé ou laissé à son ancien
+    /// fond) : on le repose. Vrai s'il a fallu le faire.
+    /// </summary>
+    public static Task<bool> EnsureAsync(string path) => Worker.Run(() =>
+    {
+        if (!File.Exists(path)) return false;
+        var now = Snapshot();
+        string full = System.IO.Path.GetFullPath(path);
+        if (now.Count > 0 && now.Values.All(p => string.Equals(p, full, StringComparison.OrdinalIgnoreCase))) return false;
+        SetAll(path);
+        WriteDesktops(path);
+        return true;
+    });
+
+    // ----- fond -----
+
+    private static void SetAll(string path)
     {
         try
         {
@@ -67,13 +123,11 @@ internal static class Wallpapers
             // Sans IDesktopWallpaper : l'ancienne API, qui enregistre le choix et prévient Windows.
             SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, path, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
         }
-        return Current();
-    });
+    }
 
-    // Le fond de chaque écran (ils peuvent différer). Les chemins sont normalisés pour la comparaison.
-    private static HashSet<string> Current()
+    private static Dictionary<string, string> Snapshot()
     {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, string>();
         try
         {
             var dw = Create();
@@ -86,23 +140,46 @@ internal static class Wallpapers
                     {
                         dw.GetMonitorDevicePathAt(i, out string monitor);
                         dw.GetWallpaper(monitor, out string wp);
-                        if (!string.IsNullOrEmpty(wp)) set.Add(System.IO.Path.GetFullPath(wp));
+                        if (!string.IsNullOrEmpty(wp)) map[monitor] = System.IO.Path.GetFullPath(wp);
                     }
                     catch { /* écran inactif : pas de fond à lire */ }
                 }
             }
             finally { Marshal.ReleaseComObject(dw); }
         }
-        catch { /* on ne sait pas : aucun fond n'est marqué */ }
-        return set;
+        catch { /* on ne sait pas : aucun fond n'est connu */ }
+        return map;
     }
+
+    // Le fond de chaque bureau virtuel, là où l'Explorateur le note (un sous-dossier par bureau).
+    // Il le relit quand il redémarre ; pour la session en cours, ShellContext repose le fond au
+    // changement de bureau (EnsureAsync).
+    private const string DesktopsKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\VirtualDesktops";
+
+    private static void WriteDesktops(string path)
+    {
+        try
+        {
+            using var root = Registry.CurrentUser.OpenSubKey(DesktopsKey);
+            if (root?.GetValue("VirtualDesktopIDs") is not byte[] ids) return;
+            for (int i = 0; i + 16 <= ids.Length; i += 16)
+            {
+                string id = new Guid(ids.AsSpan(i, 16)).ToString("B").ToUpperInvariant();
+                using var k = Registry.CurrentUser.OpenSubKey($@"{DesktopsKey}\Desktops\{id}", writable: true);
+                k?.SetValue("Wallpaper", path, RegistryValueKind.String);
+            }
+        }
+        catch { /* registre illisible : le fond reste posé sur le bureau courant */ }
+    }
+
+    // ----- miniatures -----
 
     private static string Thumb(string file)
     {
         try
         {
             var info = new FileInfo(file);
-            string key = $"{info.FullName.ToLowerInvariant()}|{info.LastWriteTimeUtc.Ticks}|{info.Length}";
+            string key = $"{info.FullName.ToLowerInvariant()}|{info.LastWriteTimeUtc.Ticks}|{info.Length}|{ThumbPx}";
             string name = "fond-" + Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(key))) + ".png";
             string path = System.IO.Path.Combine(Catalog.IconDir, name);
             string url = $"https://{Catalog.IconHost}/{name}";
@@ -135,19 +212,27 @@ internal static class Wallpapers
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool SystemParametersInfo(uint action, uint param, string pvParam, uint winIni);
 
-    /// <summary>Exécute un travail sur un fil STA à part (le shell et COM le demandent).</summary>
-    private static class Sta
+    /// <summary>Un fil STA à part (le shell et COM le demandent) qui exécute les travaux dans l'ordre.</summary>
+    private static class Worker
     {
+        private static readonly BlockingCollection<Action> Queue = new();
+
+        static Worker()
+        {
+            var t = new Thread(() => { foreach (var job in Queue.GetConsumingEnumerable()) job(); })
+                { IsBackground = true, Name = "Azuria.Wallpaper" };
+            t.SetApartmentState(ApartmentState.STA);
+            t.Start();
+        }
+
         public static Task<T> Run<T>(Func<T> work)
         {
             var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var t = new Thread(() =>
+            Queue.Add(() =>
             {
                 try { tcs.SetResult(work()); }
                 catch (Exception e) { tcs.SetException(e); }
-            }) { IsBackground = true, Name = "Azuria.Wallpaper" };
-            t.SetApartmentState(ApartmentState.STA);
-            t.Start();
+            });
             return tcs.Task;
         }
     }
