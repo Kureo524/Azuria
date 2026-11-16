@@ -337,6 +337,8 @@ internal class GlassWindow : Form
         }
         Rectangle hot = _shownState ? _keepZone : _triggerZone;
         bool want = hot.Contains(cursor);
+        // Bouton gauche enfoncé (une fenêtre qu'on glisse, une sélection) : un tiroir fermé ne sort pas.
+        if (want && !_shownState && GetAsyncKeyState(0x01 /* VK_LBUTTON */) < 0) return;
         if (want != _shownState)
         {
             if (want) PrepareReveal(cursor); // ex. se recentrer sur l'écran du curseur

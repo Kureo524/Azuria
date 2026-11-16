@@ -191,8 +191,10 @@ hauteur remplace les coins du cadre de son côté par ses propres congés. Un ti
 **Fenêtres** — les fenêtres d'applis sont **pavées** dans la zone de travail de leur écran (idée du « dwindle » de
 Hyprland) : **10** entre une fenêtre et le cadre, **10** entre deux fenêtres. Une seule fenêtre prend toute la zone ;
 la deuxième la partage en deux, côte à côte ; chaque nouvelle coupe en deux la place de la précédente, dans le sens
-le plus long. Glisser une fenêtre sur une autre échange leurs places, sur un autre écran l'y fait passer ; un
-redimensionnement à la main est annulé. Restent libres : boîtes de dialogue, fenêtres non redimensionnables ou
+le plus long. Le glissé ne sert qu'à réordonner un écran : une fenêtre lâchée sur une autre du même écran échange sa
+place avec elle ; lâchée ailleurs (vide, autre écran), elle revient à sa place ; seule sur son écran, elle ne se
+glisse pas. Un redimensionnement à la main est annulé. L'aimantation de Windows (Snap et sa grille en haut de
+l'écran) est coupée tant que le shell tourne, et aucun tiroir ne sort pendant un glissé. Restent libres : boîtes de dialogue, fenêtres non redimensionnables ou
 toujours au-dessus, fenêtres agrandies à la main, et **tout jeu** (plein écran, ou dossiers Riot Games, Steam, Epic
 Games, Vanguard). Le pavage s'arrête pendant un jeu en plein écran. Les fenêtres **glissent** vers leur place (0,22 s,
 décélération, section 11). La fenêtre active porte un **contour `--accent`** (bordure de Windows 11, 1 px), les autres
