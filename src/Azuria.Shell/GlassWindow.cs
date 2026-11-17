@@ -303,12 +303,43 @@ internal class GlassWindow : Form
         };
 
         ApplyBlurClass();
+        // Teinte d'accent choisie dans les réglages : posée à chaque chargement, et en direct.
+        await ApplyThemeAsync();
+        Settings.Changed += OnSettingsChanged;
         // La page reçoit la zone utile (hors congés) en px CSS (drawer.js).
         var i = ContentInsets;
         string query = $"?l={i.Left}&t={i.Top}&r={i.Right}&b={i.Bottom}";
         core.Navigate($"https://azuria.local/{_page}{query}");
 
         if (HoverDriven) _hover.Start();
+    }
+
+    private string? _themeScriptId;
+    private string _theme = "";
+
+    private async Task ApplyThemeAsync()
+    {
+        var core = _web.CoreWebView2;
+        if (core is null) return;
+        string js = Settings.Current.ThemeScript();
+        if (js == _theme) return;
+        _theme = js;
+        if (_themeScriptId is not null) core.RemoveScriptToExecuteOnDocumentCreated(_themeScriptId);
+        _themeScriptId = await core.AddScriptToExecuteOnDocumentCreatedAsync(js);
+        _ = core.ExecuteScriptAsync(js);
+    }
+
+    private async void OnSettingsChanged()
+    {
+        if (IsDisposed || !IsHandleCreated) return;
+        if (InvokeRequired) { BeginInvoke(OnSettingsChanged); return; }
+        try { await ApplyThemeAsync(); } catch { /* page en cours de fermeture */ }
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        Settings.Changed -= OnSettingsChanged;
+        base.OnHandleDestroyed(e);
     }
 
     // ----- révélation par glissement -----

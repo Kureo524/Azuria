@@ -286,6 +286,12 @@ verre léger : titre 15 Bold, onglets hauteur 30, rayon 10 (sélectionné : `--a
 Contenu : titres de section 15 Bold, lignes de réglage (hauteur 40 au moins, rayon 12, survol `--hover`) avec
 libellé et aide 11 en `--text-3` à gauche, contrôle à droite. L'objectif est qu'aucun réglage courant n'oblige à
 ouvrir un terminal ni les réglages de Windows.
+État actuel : un panneau de verre **flottant** de 760 × 520, centré sur l'écran du curseur, ouvert par « Réglages
+d'Azuria » en tête du panneau droit, rangé sur Échap ou au clic ailleurs. Ce n'est pas encore une vraie fenêtre
+(Alt-Tab, déplaçable), parce que le verre est dessiné par la surface de l'écran. Sections : Apparence (accent parmi
+les préréglages du §4, appliqué en direct à toutes les pages et au contour de la fenêtre active), Fenêtres (pavage
+automatique, focus qui suit la souris), Démarrage (lancement à l'ouverture de session), À propos. Les réglages sont
+enregistrés dans `%APPDATA%\Azuria\settings.json`.
 
 **Menus et infobulles** — verre plein, rayon 12, marge intérieure 4, largeur minimale 170. Item : rayon 8,
 `--text-2`, survol `--hover` + `--text`. Coche en `--accent`. Item indisponible à 40 %.

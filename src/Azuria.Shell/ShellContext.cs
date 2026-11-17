@@ -55,6 +55,13 @@ internal sealed class ShellContext : ApplicationContext
         _barFeed = new BarFeed(bar);                                                      // bureaux, état
         var launcher = new LauncherWindow();                                              // bas
         _wallpaperFeed = new WallpaperFeed(launcher);                                     // commande >wallpaper
+        var settings = new SettingsWindow();                                              // réglages d'Azuria
+        sidebar.MessageReceived += msg =>
+        {
+            if (msg != "settings") return;
+            sidebar.Conceal();
+            settings.Open(Cursor.Position);
+        };
 
         // La barre gauche remplace la barre des tâches de Windows : elle liste les applis ouvertes.
         _apps = new OpenWindows();
@@ -92,7 +99,7 @@ internal sealed class ShellContext : ApplicationContext
         };
         _catalog.Refresh(TimeSpan.Zero);
 
-        foreach (var w in new GlassWindow[] { bar, dashboard, sidebar, launcher })
+        foreach (var w in new GlassWindow[] { bar, dashboard, sidebar, launcher, settings })
         {
             w.Moved += OnDrawerMoved;
             w.PresenceChanged += OnDrawerPresence;

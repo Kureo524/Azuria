@@ -125,8 +125,9 @@ internal sealed class Tiler : IDisposable
     {
         // Snap de Windows coupé pour la session seulement (sans SPIF_UPDATEINIFILE : rien n'est écrit
         // dans le profil, une fermeture de session le remet même si le shell s'arrête mal).
-        if (SystemParametersInfo(SPI_GETWINARRANGING, 0, out int arranging, 0) && arranging != 0)
-            _snapWasOn = SystemParametersSet(SPI_SETWINARRANGING, 0, 0, SPIF_SENDCHANGE);
+        // Pavage coupé dans les réglages : Snap reste à Windows.
+        _snapWasOn = SystemParametersInfo(SPI_GETWINARRANGING, 0, out int arranging, 0) && arranging != 0;
+        UpdateSnap();
 
         uint flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
         foreach (var (min, max) in new[]
@@ -147,6 +148,7 @@ internal sealed class Tiler : IDisposable
         Reconcile();
         Focus(GetForegroundWindow()); // contour sur la fenêtre déjà active
         _hover.Start();               // le focus suit le curseur
+        Settings.Changed += OnSettingsChanged;
     }
 
     /// <summary>Vrai pendant un jeu en plein écran : on ne touche à aucune fenêtre.</summary>
@@ -188,7 +190,8 @@ internal sealed class Tiler : IDisposable
             case EVENT_SYSTEM_MOVESIZESTART:
                 // Seule sur son écran, une fenêtre pavée n'a rien à réordonner : le glissé est annulé
                 // d'emblée (message standard, la boucle de déplacement de Windows s'arrête).
-                if (!_suspended && _order.Contains(hwnd) && !Shared(hwnd)) PostMessage(hwnd, WM_CANCELMODE, 0, 0);
+                if (!_suspended && Settings.Current.Tiling && _order.Contains(hwnd) && !Shared(hwnd))
+                    PostMessage(hwnd, WM_CANCELMODE, 0, 0);
                 return;
             case EVENT_SYSTEM_MOVESIZEEND:
                 _dragged = hwnd;
@@ -201,7 +204,7 @@ internal sealed class Tiler : IDisposable
 
     private void Reconcile()
     {
-        if (_suspended) return;
+        if (_suspended || !Settings.Current.Tiling) return;
 
         // Fenêtres disparues.
         foreach (var h in _order.Where(h => !IsWindow(h)).ToList()) Forget(h);
@@ -258,7 +261,7 @@ internal sealed class Tiler : IDisposable
 
     private void Apply()
     {
-        if (_suspended) return;
+        if (_suspended || !Settings.Current.Tiling) return;
         var moves = new List<(nint H, Rectangle From, Rectangle To)>();
         foreach (var screen in Screen.AllScreens)
         {
@@ -365,7 +368,7 @@ internal sealed class Tiler : IDisposable
     /// </summary>
     private void FollowMouse()
     {
-        if (_suspended) { _hovered = 0; return; }
+        if (_suspended || !Settings.Current.FocusFollowsMouse) { _hovered = 0; return; }
         if (GetAsyncKeyState(VK_LBUTTON) < 0 || GetAsyncKeyState(VK_RBUTTON) < 0 || GetAsyncKeyState(VK_MBUTTON) < 0)
         {
             _hovered = 0;
@@ -404,9 +407,33 @@ internal sealed class Tiler : IDisposable
 
     // ----- contour de la fenêtre active -----
 
-    // DA §3 : --accent #8fa4cc, en COLORREF (0x00BBGGRR). À brancher sur le réglage d'accent plus tard.
-    private const uint AccentBorder = 0x00CCA48F;
     private const uint DWMWA_BORDER_COLOR = 34, DWMWA_COLOR_DEFAULT = 0xFFFFFFFF;
+
+    // Réglages changés : le contour prend la nouvelle teinte ; le pavage remis en marche reprend
+    // toutes les fenêtres ouvertes (coupé, il laisse chacune là où elle est).
+    private bool _tilingWas = Settings.Current.Tiling;
+
+    // Snap de Windows (s'il était actif) : coupé pendant le pavage, rendu quand le pavage est coupé.
+    private void UpdateSnap()
+    {
+        if (_snapWasOn) SystemParametersSet(SPI_SETWINARRANGING, Settings.Current.Tiling ? 0u : 1u, 0, SPIF_SENDCHANGE);
+    }
+    private void OnSettingsChanged()
+    {
+        if (_focused != 0 && IsWindow(_focused))
+        {
+            uint c = Settings.Current.AccentColorRef;
+            DwmSetWindowAttribute(_focused, DWMWA_BORDER_COLOR, ref c, sizeof(uint));
+        }
+        bool on = Settings.Current.Tiling;
+        if (on != _tilingWas) UpdateSnap();
+        if (on && !_tilingWas)
+        {
+            EnumWindows((h, _) => { _candidates.Add(h); return true; }, 0);
+            Schedule();
+        }
+        _tilingWas = on;
+    }
 
     /// <summary>
     /// La fenêtre d'appli au premier plan prend un contour couleur d'accent ; la précédente retrouve
@@ -419,7 +446,7 @@ internal sealed class Tiler : IDisposable
         if (h == _focused) return;
         if (_focused != 0 && IsWindow(_focused)) Border(_focused, DWMWA_COLOR_DEFAULT);
         _focused = h;
-        if (h != 0) Border(h, AccentBorder);
+        if (h != 0) Border(h, Settings.Current.AccentColorRef);
 
         static void Border(nint w, uint color) => DwmSetWindowAttribute(w, DWMWA_BORDER_COLOR, ref color, sizeof(uint));
     }
@@ -468,6 +495,7 @@ internal sealed class Tiler : IDisposable
     public void Dispose()
     {
         _disposed = true;
+        Settings.Changed -= OnSettingsChanged;
         Focus(0);
         if (_snapWasOn) SystemParametersSet(SPI_SETWINARRANGING, 1, 0, SPIF_SENDCHANGE);
         foreach (var h in _hooks) UnhookWinEvent(h);
