@@ -147,7 +147,11 @@ Recette de référence, exprimée en CSS :
 ## 7. Le bureau
 
 **Fond d'écran** — libre. Le fond par défaut est l'encre unie avec une seule tache d'encre diffuse en haut à
-gauche. Aucun fond animé.
+gauche. Aucun fond animé. On le choisit par la commande `>wallpaper` du lanceur (§9).
+
+**Pas d'icônes sur le bureau** — le bureau ne montre que le fond. Tant qu'Azuria tourne, les icônes de
+l'Explorateur sont cachées ; elles reviennent quand Azuria s'arrête. Les fichiers se retrouvent par l'Explorateur
+(et plus tard par la recherche du lanceur).
 
 **Fenêtres des applications** — elles se partagent l'écran sans se chevaucher (pavage), avec **12 d'écart** entre
 elles et avec la barre et les bords. La fenêtre active a une bordure de 1 en `--accent` ; les autres en
@@ -191,8 +195,10 @@ hauteur remplace les coins du cadre de son côté par ses propres congés. Un ti
 **Fenêtres** — les fenêtres d'applis sont **pavées** dans la zone de travail de leur écran (idée du « dwindle » de
 Hyprland) : **10** entre une fenêtre et le cadre, **10** entre deux fenêtres. Une seule fenêtre prend toute la zone ;
 la deuxième la partage en deux, côte à côte ; chaque nouvelle coupe en deux la place de la précédente, dans le sens
-le plus long. Glisser une fenêtre sur une autre échange leurs places, sur un autre écran l'y fait passer ; un
-redimensionnement à la main est annulé. Restent libres : boîtes de dialogue, fenêtres non redimensionnables ou
+le plus long. Le glissé ne sert qu'à réordonner un écran : une fenêtre lâchée sur une autre du même écran échange sa
+place avec elle ; lâchée ailleurs (vide, autre écran), elle revient à sa place ; seule sur son écran, elle ne se
+glisse pas. Un redimensionnement à la main est annulé. L'aimantation de Windows (Snap et sa grille en haut de
+l'écran) est coupée tant que le shell tourne, et aucun tiroir ne sort pendant un glissé. Restent libres : boîtes de dialogue, fenêtres non redimensionnables ou
 toujours au-dessus, fenêtres agrandies à la main, et **tout jeu** (plein écran, ou dossiers Riot Games, Steam, Epic
 Games, Vanguard). Le pavage s'arrête pendant un jeu en plein écran. Les fenêtres **glissent** vers leur place (0,22 s,
 décélération, section 11). La fenêtre active porte un **contour `--accent`** (bordure de Windows 11, 1 px), les autres
@@ -215,8 +221,12 @@ De haut en bas :
   plan la réduit ;
 - l'heure en vertical (heures au-dessus des minutes, Barlow Condensed) et la date courte ;
 - les icônes d'état (réseau et force du Wi-Fi, son, batterie avec son pourcentage, `--warning` sous 20 %, `--danger` sous
-  10 %) ; un clic ouvre le panneau droit ;
-- le bouton de session (prend `--danger` au survol seulement) : il ouvre le panneau droit et sa rangée de session.
+  10 %) ; un clic **déplie le réglage sur place**, sous l'icône, dans un bloc `--surface-raised` de rayon 12 : Wi-Fi et
+  Bluetooth (boutons 34, actifs en `--accent-soft`), volume (curseur vertical, molette, la valeur coupe le son) ;
+- le bouton de session (prend `--danger` au survol seulement) : il déplie sur place verrouiller, veille, déconnexion,
+  redémarrage, arrêt et quitter Azuria (second clic pour confirmer ce qui ferme la session).
+- Un seul réglage déplié à la fois. **Règle générale** : un réglage visible dans un panneau se modifie là où il est,
+  jamais en renvoyant vers un autre panneau.
 - Séparateurs horizontaux 24 × 1 en `--border-strong` entre les groupes.
 
 **Tableau de bord** — tiroir collé au bord haut, centré, rayon 18, largeur 640 (720 au plus). Il descend quand le
@@ -242,6 +252,16 @@ est l'élément courant. **Sa hauteur suit le nombre de résultats** (380 au plu
 en 0,14 s. ↑ ↓ pour choisir, Entrée ou clic pour lancer. Les **jeux installés** (Steam, Epic Games,
 Riot Games) sont lancés par leur launcher, qui s'ouvre en arrière-plan. La même recherche trouvera plus tard les
 fichiers, les réglages et les actions (éteindre, verrouiller…). Se range sur Échap ou au clic ailleurs.
+
+**Commandes du lanceur** — une recherche qui commence par **`>`** liste les commandes (mêmes lignes, icône au trait
+20 dans une case `--surface-raised` rayon 8) ; Entrée, Tab ou clic complète la commande dans le champ, et ce qui suit
+son nom filtre sa liste. **`>wallpaper`** montre les images du dossier `Images\Wallpaper` de l'utilisateur en une
+**bande horizontale** posée contre le champ : cartes de 168 de large (miniature 156 × 88 rayon 6, nom en 12,
+« Actuel » en `--accent-text` sous le fond posé), qui défile à la molette ou aux flèches ← →. L'élément courant à
+l'ouverture est le fond posé. **Survoler ou choisir une carte la met en aperçu** : le fond change derrière le
+lanceur sans rien enregistrer (après 0,12 s, pour ne pas poser chaque carte survolée). **Entrée ou clic** pose le fond
+pour de bon, sur tous les écrans **et tous les bureaux virtuels**, et range le lanceur ; **Échap**, un clic ailleurs
+ou la sortie de la commande rendent le fond d'avant. Dossier absent ou vide : le message le dit, avec le chemin.
 
 **Panneau droit** — réglages rapides, notifications et session. Tiroir collé au bord droit, pleine hauteur,
 largeur 280, révélé quand le curseur touche le bord droit, ou ouvert par les icônes d'état et le bouton de session
