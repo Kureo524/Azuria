@@ -65,7 +65,11 @@ internal sealed class ShellContext : ApplicationContext
         {
             if (msg == "launcher") launcher.Toggle(Cursor.Position);   // le logo ouvre / range le lanceur
             else if (msg == "quit") Shutdown();
-            else if (msg == "panel") sidebar.Reveal(pinned: true);     // état, alimentation : le panneau droit
+            else if (msg.StartsWith("session:"))                       // actions de session, sur place
+            {
+                bar.Conceal();
+                _rightFeed.RunSession(msg[8..]);
+            }
             else if (msg == "apps") SendApps(bar);                     // la page est prête
             else if (msg.StartsWith("app:") && long.TryParse(msg[4..], out long h))
             {

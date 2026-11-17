@@ -219,8 +219,12 @@ De haut en bas :
   plan la réduit ;
 - l'heure en vertical (heures au-dessus des minutes, Barlow Condensed) et la date courte ;
 - les icônes d'état (réseau et force du Wi-Fi, son, batterie avec son pourcentage, `--warning` sous 20 %, `--danger` sous
-  10 %) ; un clic ouvre le panneau droit ;
-- le bouton de session (prend `--danger` au survol seulement) : il ouvre le panneau droit et sa rangée de session.
+  10 %) ; un clic **déplie le réglage sur place**, sous l'icône, dans un bloc `--surface-raised` de rayon 12 : Wi-Fi et
+  Bluetooth (boutons 34, actifs en `--accent-soft`), volume (curseur vertical, molette, la valeur coupe le son) ;
+- le bouton de session (prend `--danger` au survol seulement) : il déplie sur place verrouiller, veille, déconnexion,
+  redémarrage, arrêt et quitter Azuria (second clic pour confirmer ce qui ferme la session).
+- Un seul réglage déplié à la fois. **Règle générale** : un réglage visible dans un panneau se modifie là où il est,
+  jamais en renvoyant vers un autre panneau.
 - Séparateurs horizontaux 24 × 1 en `--border-strong` entre les groupes.
 
 **Tableau de bord** — tiroir collé au bord haut, centré, rayon 18, largeur 640 (720 au plus). Il descend quand le
