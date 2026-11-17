@@ -21,7 +21,7 @@
       transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
     }
     .btn:hover { background: var(--hover); color: var(--text); }
-    .logo { color: var(--text); font-weight: 700; font-size: 17px; line-height: 1; }
+    .logo img { width: 24px; height: 24px; display: block; } /* marque au pinceau (web/logo.svg) */
     .power:hover { color: var(--danger); } /* l'action destructrice ne prend la couleur qu'au survol */
 
     /* Bureaux, empilés */
@@ -71,7 +71,7 @@
 <body>
   <script src="drawer.js"></script>
   <div class="content bar">
-    <div class="btn logo" id="logo">A</div>
+    <div class="btn logo" id="logo" title="Lanceur"><img src="logo.svg" alt="Azuria"></div>
     <div class="sep"></div>
 
     <div class="desks" id="desks"></div>

@@ -205,7 +205,9 @@ rayon sans injection ; avec 10 de marge, ils sont concentriques aux coins de 18 
 gauche. Elle **remplace la barre des tâches de Windows**, masquée tant qu'Azuria tourne et rendue à sa sortie.
 De haut en bas :
 
-- le logo Azuria (ouvre le lanceur) ;
+- le logo Azuria (ouvre le lanceur) : le « A » au pinceau, jambes `--text` et barre `--accent` (`web/logo.svg`).
+  L'icône de l'appli (`assets/azuria.svg`, `azuria.ico`) pose ce même A sur un carré `--solid` de rayon 56/256, avec
+  un halo d'encre `--accent`, des bords irréguliers et des stries de pinceau sec ;
 - les **bureaux virtuels de Windows**, empilés (32 × 32, rayon 9, SemiBold ; actif : fond `--accent-soft`, texte
   `--accent`) ; un clic y va, « + » en crée un ;
 - les **applis ouvertes** (icône 24 dans un bouton 40, rayon 11, nom en infobulle) ; celle au premier plan prend le

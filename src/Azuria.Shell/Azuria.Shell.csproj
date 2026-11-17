@@ -11,6 +11,8 @@
     <RootNamespace>Azuria.Shell</RootNamespace>
     <AssemblyName>Azuria</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Icône : « A » au pinceau, effet encre. Source vectorielle dans assets/azuria.svg. -->
+    <ApplicationIcon>assets\azuria.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- MSB3277 : le paquet WebView2 embarque aussi sa variante WPF (qu'on n'utilise pas),
          d'où un conflit de version inoffensif sur WindowsBase. On le réduit au silence. -->
