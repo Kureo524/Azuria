@@ -10,8 +10,11 @@ namespace Azuria.Shell.Native;
 /// - une seule fenêtre : toute la zone ;
 /// - une deuxième : la zone se partage en deux, côte à côte ;
 /// - chaque nouvelle coupe en deux la place de la précédente, dans le sens le plus long (spirale).
-/// Ordre d'arrivée conservé. Une fenêtre glissée sur une autre échange sa place avec elle ; glissée
-/// sur un autre écran, elle y rejoint le pavage. Un redimensionnement à la main est annulé.
+/// Ordre d'arrivée conservé. Le glissé ne sert qu'à réordonner un écran : une fenêtre lâchée sur une
+/// autre du même écran échange sa place avec elle ; lâchée ailleurs (vide, autre écran), elle revient
+/// à sa place. Seule sur son écran, elle ne se glisse pas du tout. Un redimensionnement à la main est
+/// annulé. L'aimantation de Windows (Snap, et sa grille en haut de l'écran) est coupée tant que le
+/// shell tourne : elle contredirait le pavage.
 ///
 /// Seules les fenêtres « normales » sont pavées : redimensionnables, avec un bouton agrandir, sans
 /// propriétaire (pas de boîte de dialogue), pas toujours au-dessus, pas réduites. Une fenêtre agrandie
@@ -77,6 +80,12 @@ internal sealed class Tiler : IDisposable
     [DllImport("kernel32.dll")] private static extern bool CloseHandle(nint h);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool QueryFullProcessImageName(nint p, int flags, StringBuilder s, ref int size);
     private delegate bool EnumProc(nint h, nint lParam);
+    [DllImport("user32.dll")] private static extern bool PostMessage(nint h, uint msg, nint w, nint l);
+    [DllImport("user32.dll")] private static extern bool SystemParametersInfo(uint action, uint param, out int value, uint winIni);
+    [DllImport("user32.dll", EntryPoint = "SystemParametersInfo")] private static extern bool SystemParametersSet(uint action, uint param, nint value, uint winIni);
+
+    private const uint WM_CANCELMODE = 0x001F;
+    private const uint SPI_GETWINARRANGING = 0x0082, SPI_SETWINARRANGING = 0x0083, SPIF_SENDCHANGE = 0x02;
 
     // Dossiers dont les fenêtres ne sont jamais touchées (jeux, launchers de jeux, anti-triche).
     private static readonly string[] GameFolders =
@@ -101,6 +110,7 @@ internal sealed class Tiler : IDisposable
     private int _generation; // pavage en cours d'animation
     private bool _disposed;
     private bool _suspended;
+    private bool _snapWasOn;  // Snap de Windows actif avant nous : à remettre en partant
 
     public Tiler()
     {
@@ -113,6 +123,12 @@ internal sealed class Tiler : IDisposable
 
     public void Start()
     {
+        // Snap de Windows coupé pour la session seulement (sans SPIF_UPDATEINIFILE : rien n'est écrit
+        // dans le profil, une fermeture de session le remet même si le shell s'arrête mal).
+        // Pavage coupé dans les réglages : Snap reste à Windows.
+        _snapWasOn = SystemParametersInfo(SPI_GETWINARRANGING, 0, out int arranging, 0) && arranging != 0;
+        UpdateSnap();
+
         uint flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
         foreach (var (min, max) in new[]
         {
@@ -172,6 +188,10 @@ internal sealed class Tiler : IDisposable
                 Focus(hwnd); // contour tout de suite, sans attendre
                 return;
             case EVENT_SYSTEM_MOVESIZESTART:
+                // Seule sur son écran, une fenêtre pavée n'a rien à réordonner : le glissé est annulé
+                // d'emblée (message standard, la boucle de déplacement de Windows s'arrête).
+                if (!_suspended && Settings.Current.Tiling && _order.Contains(hwnd) && !Shared(hwnd))
+                    PostMessage(hwnd, WM_CANCELMODE, 0, 0);
                 return;
             case EVENT_SYSTEM_MOVESIZEEND:
                 _dragged = hwnd;
@@ -215,22 +235,26 @@ internal sealed class Tiler : IDisposable
         _fresh.Remove(h);
     }
 
-    // Fin d'un glissé : sur la place d'une autre fenêtre, on échange ; sur un autre écran, on y passe.
+    // Fenêtres pavées sur un écran (même règle que le placement).
+    private List<nint> TiledOn(string screen) =>
+        _order.Where(h => _screenOf.TryGetValue(h, out var s) && s == screen
+                          && Tileable(h, allowZoomed: _fresh.Contains(h))).ToList();
+
+    // Vrai si la fenêtre partage son écran avec au moins une autre fenêtre pavée.
+    private bool Shared(nint h) => _screenOf.TryGetValue(h, out var s) && TiledOn(s).Any(o => o != h);
+
+    // Fin d'un glissé : lâchée sur une autre fenêtre du même écran, elle échange sa place avec elle.
+    // Partout ailleurs (vide, autre écran, aimant de Windows), le pavage la remet à sa place.
     private void Dropped(nint h)
     {
         int i = _order.IndexOf(h);
-        if (i < 0) return;
+        if (i < 0 || !_screenOf.TryGetValue(h, out var screen)) return;
         GetCursorPos(out POINT p);
         var cursor = new Point(p.X, p.Y);
-        string target = Screen.FromPoint(cursor).DeviceName;
-        var over = _tiles.FirstOrDefault(t => t.Key != h && t.Value.Contains(cursor) && _order.Contains(t.Key)).Key;
-        if (over != 0)
-        {
-            int j = _order.IndexOf(over);
-            (_order[i], _order[j]) = (_order[j], _order[i]);
-            (_screenOf[h], _screenOf[over]) = (_screenOf[over], _screenOf[h]);
-        }
-        else _screenOf[h] = target;
+        var over = TiledOn(screen).FirstOrDefault(o => o != h && _tiles.TryGetValue(o, out var t) && t.Contains(cursor));
+        if (over == 0) return;
+        int j = _order.IndexOf(over);
+        (_order[i], _order[j]) = (_order[j], _order[i]);
     }
 
     // ----- placement -----
@@ -241,8 +265,7 @@ internal sealed class Tiler : IDisposable
         var moves = new List<(nint H, Rectangle From, Rectangle To)>();
         foreach (var screen in Screen.AllScreens)
         {
-            var windows = _order.Where(h => _screenOf.TryGetValue(h, out var s) && s == screen.DeviceName
-                                            && Tileable(h, allowZoomed: _fresh.Contains(h))).ToList();
+            var windows = TiledOn(screen.DeviceName);
             if (windows.Count == 0) continue;
             int outer = Monitors.Scale(screen, OuterGap), inner = Monitors.Scale(screen, InnerGap);
             var area = Rectangle.Inflate(Monitors.WorkArea(screen), -outer, -outer);
@@ -389,6 +412,12 @@ internal sealed class Tiler : IDisposable
     // Réglages changés : le contour prend la nouvelle teinte ; le pavage remis en marche reprend
     // toutes les fenêtres ouvertes (coupé, il laisse chacune là où elle est).
     private bool _tilingWas = Settings.Current.Tiling;
+
+    // Snap de Windows (s'il était actif) : coupé pendant le pavage, rendu quand le pavage est coupé.
+    private void UpdateSnap()
+    {
+        if (_snapWasOn) SystemParametersSet(SPI_SETWINARRANGING, Settings.Current.Tiling ? 0u : 1u, 0, SPIF_SENDCHANGE);
+    }
     private void OnSettingsChanged()
     {
         if (_focused != 0 && IsWindow(_focused))
@@ -397,6 +426,7 @@ internal sealed class Tiler : IDisposable
             DwmSetWindowAttribute(_focused, DWMWA_BORDER_COLOR, ref c, sizeof(uint));
         }
         bool on = Settings.Current.Tiling;
+        if (on != _tilingWas) UpdateSnap();
         if (on && !_tilingWas)
         {
             EnumWindows((h, _) => { _candidates.Add(h); return true; }, 0);
@@ -467,6 +497,7 @@ internal sealed class Tiler : IDisposable
         _disposed = true;
         Settings.Changed -= OnSettingsChanged;
         Focus(0);
+        if (_snapWasOn) SystemParametersSet(SPI_SETWINARRANGING, 1, 0, SPIF_SENDCHANGE);
         foreach (var h in _hooks) UnhookWinEvent(h);
         _hooks.Clear();
         _debounce.Dispose();

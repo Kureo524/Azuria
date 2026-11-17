@@ -23,6 +23,8 @@ internal sealed class ShellContext : ApplicationContext
     private readonly DashboardFeed? _dashboardFeed;
     private readonly RightPanelFeed? _rightFeed;
     private readonly BarFeed? _barFeed;
+    private readonly WallpaperFeed? _wallpaperFeed;
+    private readonly DesktopIcons? _desktopIcons;
     private readonly System.Windows.Forms.Timer _fullScreenWatch = new() { Interval = 250 };
 
     public ShellContext()
@@ -30,6 +32,7 @@ internal sealed class ShellContext : ApplicationContext
         // La barre des tâches de Windows d'abord (la place qu'elle libère revient au cadre), puis le
         // cadre : il réserve sa place, les tiroirs se calent ensuite sur la zone restante.
         _taskbar = new Taskbar();
+        _desktopIcons = new DesktopIcons(); // le bureau n'a pas d'icônes (DA §7)
         BuildSurfaces();
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         // Appli plein écran (un jeu) : le verre de son écran se masque, les tiroirs sont suspendus.
@@ -51,6 +54,7 @@ internal sealed class ShellContext : ApplicationContext
         _rightFeed = new RightPanelFeed(sidebar, Shutdown);                               // réglages, notifs, session
         _barFeed = new BarFeed(bar);                                                      // bureaux, état
         var launcher = new LauncherWindow();                                              // bas
+        _wallpaperFeed = new WallpaperFeed(launcher);                                     // commande >wallpaper
         var settings = new SettingsWindow();                                              // réglages d'Azuria
         sidebar.MessageReceived += msg =>
         {
@@ -68,7 +72,11 @@ internal sealed class ShellContext : ApplicationContext
         {
             if (msg == "launcher") launcher.Toggle(Cursor.Position);   // le logo ouvre / range le lanceur
             else if (msg == "quit") Shutdown();
-            else if (msg == "panel") sidebar.Reveal(pinned: true);     // état, alimentation : le panneau droit
+            else if (msg.StartsWith("session:"))                       // actions de session, sur place
+            {
+                bar.Conceal();
+                _rightFeed.RunSession(msg[8..]);
+            }
             else if (msg == "apps") SendApps(bar);                     // la page est prête
             else if (msg.StartsWith("app:") && long.TryParse(msg[4..], out long h))
             {
@@ -129,6 +137,8 @@ internal sealed class ShellContext : ApplicationContext
         _dashboardFeed?.Dispose();
         _rightFeed?.Dispose();
         _barFeed?.Dispose();
+        _wallpaperFeed?.Dispose();
+        _desktopIcons?.Dispose();
         _apps?.Dispose();
         _taskbar?.Dispose();
         DisposeSurfaces();
@@ -141,6 +151,7 @@ internal sealed class ShellContext : ApplicationContext
     {
         foreach (var s in _surfaces) s.ReleaseReservation();
         _taskbar?.Restore();
+        _desktopIcons?.Restore();
     }
 
     // La liste des applis ouvertes, envoyée à la barre (icônes en PNG, la page dessine le reste).

@@ -81,7 +81,8 @@ internal sealed class RightPanelFeed : IDisposable
         }
     }
 
-    private void RunSession(string? action)
+    /// <summary>Verrouiller, veille, déconnexion, redémarrage, arrêt, ou quitter Azuria.</summary>
+    public void RunSession(string? action)
     {
         _window.Conceal();
         switch (action)

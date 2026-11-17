@@ -21,6 +21,7 @@
       transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
     }
     .btn:hover { background: var(--hover); color: var(--text); }
+    .btn[hidden] { display: none; } /* sinon display: grid l'emporte (batterie absente d'un PC fixe) */
     .logo { color: var(--text); font-weight: 700; font-size: 17px; line-height: 1; }
     .power:hover { color: var(--danger); } /* l'action destructrice ne prend la couleur qu'au survol */
 
@@ -62,6 +63,40 @@
     .app img { width: 24px; height: 24px; }
     .app .initial { font-weight: 600; font-size: 13px; color: var(--text-2); }
     .app.active { background: var(--accent-soft); }
+    /* Réglages dépliés sur place, sous leur icône (pas de détour par le panneau droit). */
+    .more {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      padding: 6px 0; margin: 2px 0; width: 44px; border-radius: 12px;
+      background: var(--surface-raised);
+    }
+    .more[hidden] { display: none; }
+    .btn.open { background: var(--hover); color: var(--text); }
+    .mini {
+      width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--text-3);
+      transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
+    }
+    .mini[hidden] { display: none; }
+    .mini:hover { background: var(--hover); color: var(--text); }
+    .mini.on { background: var(--accent-soft); color: var(--accent); }
+    .mini.danger:hover, .mini.arm { color: var(--danger); }
+    .mini.arm { background: rgba(217, 100, 108, 0.14); }
+
+    /* Curseur vertical (volume) : glisser, ou la molette */
+    .vtrack { width: 6px; height: 112px; border-radius: 3px; background: var(--surface-raised); position: relative; cursor: pointer; margin: 8px 0 6px; }
+    .vtrack::before { content: ""; position: absolute; inset: -6px -12px; } /* zone de prise plus large */
+    .vfill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 3px; background: var(--accent); }
+    .vfill::after {
+      content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
+      width: 12px; height: 12px; border-radius: 50%; background: var(--accent);
+    }
+    .vol.muted .vfill, .vol.muted .vfill::after { background: var(--text-3); }
+    .vval {
+      font-family: var(--font-num); font-weight: 600; font-size: 13px; line-height: 1; color: var(--text-2);
+      padding: 5px 4px; border-radius: 7px; cursor: pointer;
+    }
+    .vval:hover { background: var(--hover); color: var(--text); }
+    .vol.muted .vval { color: var(--text-3); }
+
     .app.active::before {           /* repère de l'appli au premier plan */
       content: ''; position: absolute; left: -4px; top: 12px; bottom: 12px;
       width: 3px; border-radius: 2px; background: var(--accent);
@@ -89,13 +124,29 @@
     <div class="sep"></div>
 
     <div class="status" id="status">
-      <div class="btn" id="st-net"></div>
-      <div class="btn" id="st-snd"></div>
+      <div class="btn" id="st-net" data-more="more-net"></div>
+      <div class="more" id="more-net" hidden>
+        <div class="mini" id="t-wifi" data-t="wifi" title="Wi-Fi" hidden><svg class="i" viewBox="0 0 24 24"><path d="M3 9.5a14 14 0 0 1 18 0"/><path d="M6 13a9.5 9.5 0 0 1 12 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="0.9" fill="currentColor" stroke="none"/></svg></div>
+        <div class="mini" id="t-bluetooth" data-t="bluetooth" title="Bluetooth" hidden><svg class="i" viewBox="0 0 24 24"><path d="M7 7.5l10 9-5 4.5V3l5 4.5-10 9"/></svg></div>
+      </div>
+      <div class="btn" id="st-snd" data-more="more-snd"></div>
+      <div class="more vol" id="more-snd" hidden>
+        <div class="vtrack" id="vtrack"><div class="vfill" id="vfill"></div></div>
+        <div class="vval" id="vval" title="Couper / rétablir le son">—</div>
+      </div>
       <div class="btn bat" id="st-bat" hidden></div>
     </div>
 
-    <div class="btn power" id="power">
+    <div class="btn power" id="power" data-more="more-power" title="Session">
       <svg class="i" viewBox="0 0 24 24"><path d="M12 3.5v8"/><path d="M7 6.5a7.5 7.5 0 1 0 10 0"/></svg>
+    </div>
+    <div class="more" id="more-power" hidden>
+      <div class="mini" data-a="lock" title="Verrouiller"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg></div>
+      <div class="mini" data-a="sleep" title="Mettre en veille"><svg class="i" viewBox="0 0 24 24"><path d="M19 14.5A8 8 0 0 1 9.5 5a8 8 0 1 0 9.5 9.5z"/></svg></div>
+      <div class="mini danger" data-a="signout" title="Se déconnecter (cliquer deux fois)" data-confirm><svg class="i" viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/></svg></div>
+      <div class="mini danger" data-a="restart" title="Redémarrer (cliquer deux fois)" data-confirm><svg class="i" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4.5v4h-4"/></svg></div>
+      <div class="mini danger" data-a="shutdown" title="Éteindre (cliquer deux fois)" data-confirm><svg class="i" viewBox="0 0 24 24"><path d="M12 3.5v8"/><path d="M7 6.5a7.5 7.5 0 1 0 10 0"/></svg></div>
+      <div class="mini" data-a="quit" title="Quitter Azuria"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
     </div>
   </div>
 
@@ -117,7 +168,8 @@
     }
     renderDesks({ count: 1, current: 0 });
 
-    // Icônes d'état : réseau, son, batterie. Un clic ouvre le panneau droit (réglages rapides).
+    // Icônes d'état : réseau, son, batterie. Un clic déplie le réglage sous l'icône, sur place
+    // (Wi-Fi et Bluetooth, volume, actions de session) : rien ne renvoie au panneau droit.
     const NET = {
       none: '<path d="M3 9.5a14 14 0 0 1 18 0"/><path d="M6 13a9.5 9.5 0 0 1 12 0"/><path d="M4 4l16 16"/>',
       ethernet: '<rect x="8" y="3.5" width="8" height="6" rx="1"/><path d="M12 9.5v4M5 20.5v-4h14v4M12 13.5v7"/>',
@@ -139,8 +191,17 @@
       const net = document.getElementById('st-net');
       net.innerHTML = svg(s.net.kind === 'wifi' ? NET.wifi(s.net.signal) : NET[s.net.kind] || NET.none);
       net.classList.toggle('warn', s.net.kind === 'none');
+      net.title = s.net.name || (s.net.kind === 'none' ? 'Hors ligne' : '');
+      for (const k of ['wifi', 'bluetooth']) {
+        const t = document.getElementById('t-' + k);
+        t.hidden = s[k] == null;
+        t.classList.toggle('on', s[k] === true);
+      }
       const v = s.volume;
-      document.getElementById('st-snd').innerHTML = svg(v == null || s.muted || v === 0 ? SND.off : v < 50 ? SND.low : SND.high);
+      const snd = document.getElementById('st-snd');
+      snd.innerHTML = svg(v == null || s.muted || v === 0 ? SND.off : v < 50 ? SND.low : SND.high);
+      snd.title = v == null ? 'Aucune sortie audio' : s.muted ? 'Son coupé' : v + ' %';
+      if (v != null) setVolume(v, s.muted);
       const bat = document.getElementById('st-bat');
       bat.hidden = s.battery == null;
       if (s.battery != null) {
@@ -149,10 +210,67 @@
         bat.classList.toggle('critical', !s.charging && s.battery <= 10);
       }
     }
-    document.getElementById('status').addEventListener('click', () => send('panel'));
+    // Déplier / replier : un seul réglage ouvert à la fois.
+    document.querySelectorAll('[data-more]').forEach(b => b.addEventListener('click', () => {
+      const target = document.getElementById(b.dataset.more), open = target.hidden;
+      document.querySelectorAll('[data-more]').forEach(o => {
+        document.getElementById(o.dataset.more).hidden = true;
+        o.classList.remove('open');
+      });
+      disarm();
+      target.hidden = !open;
+      b.classList.toggle('open', open);
+    }));
+    document.getElementById('more-net').addEventListener('click', e => {
+      const t = e.target.closest('.mini');
+      if (t) send('toggle:' + t.dataset.t);
+    });
 
-    // Bouton de session : ouvre le panneau droit, qui porte les actions (verrouiller, éteindre…).
-    document.getElementById('power').addEventListener('click', () => send('panel'));
+    // Volume : curseur vertical (glisser), molette sur l'icône ou le curseur, clic sur la valeur =
+    // couper / rétablir. Pendant le geste, les valeurs reçues du C# sont ignorées.
+    const vtrack = document.getElementById('vtrack'), vol = document.getElementById('more-snd');
+    const vfill = document.getElementById('vfill'), vval = document.getElementById('vval');
+    let volume = 0, muted = false, dragging = false, lastSent = 0;
+    function drawVolume() {
+      vol.classList.toggle('muted', muted);
+      vfill.style.height = volume + '%';
+      vval.textContent = muted ? 'muet' : volume;
+    }
+    function setVolume(v, m) {
+      muted = !!m;
+      if (!dragging) volume = v;
+      drawVolume();
+    }
+    function applyVolume(v, force) {
+      volume = Math.max(0, Math.min(100, Math.round(v)));
+      drawVolume();
+      const now = performance.now();
+      if (force || now - lastSent > 40) { lastSent = now; send('volume:' + volume); } // ~25 par seconde au plus
+    }
+    const vat = e => { const r = vtrack.getBoundingClientRect(); return Math.max(0, Math.min(1, (r.bottom - e.clientY) / r.height)) * 100; };
+    vtrack.addEventListener('pointerdown', e => { dragging = true; vtrack.setPointerCapture(e.pointerId); applyVolume(vat(e), true); });
+    vtrack.addEventListener('pointermove', e => { if (dragging) applyVolume(vat(e)); });
+    vtrack.addEventListener('pointerup', e => { if (dragging) { applyVolume(vat(e), true); dragging = false; } });
+    for (const el of [vol, document.getElementById('st-snd')])
+      el.addEventListener('wheel', e => { e.preventDefault(); applyVolume(volume + (e.deltaY < 0 ? 5 : -5), true); }, { passive: false });
+    vval.addEventListener('click', () => send('toggle:mute'));
+
+    // Session : les actions qui ferment la session demandent un second clic (3 s pour confirmer).
+    let armed = null, armTimer = 0;
+    function disarm() { armed?.classList.remove('arm'); armed = null; clearTimeout(armTimer); }
+    document.getElementById('more-power').addEventListener('click', e => {
+      const b = e.target.closest('.mini');
+      if (!b) return;
+      if (b.hasAttribute('data-confirm') && armed !== b) {
+        disarm();
+        armed = b;
+        b.classList.add('arm');
+        armTimer = setTimeout(disarm, 3000);
+        return;
+      }
+      disarm();
+      send('session:' + b.dataset.a);
+    });
 
     // Le logo ouvre / range le lanceur (géré par le C#).
     document.getElementById('logo').addEventListener('click', () => send('launcher'));
