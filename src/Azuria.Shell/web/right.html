@@ -102,7 +102,10 @@
 <body>
   <script src="drawer.js"></script>
   <div class="content panel">
-    <div class="label">Réglages rapides</div>
+    <div class="head">
+      <div class="label">Réglages rapides</div>
+      <button class="clear" id="open-settings">Réglages d'Azuria</button>
+    </div>
     <div class="quick">
       <div class="toggle" id="t-wifi" data-t="wifi">
         <svg class="i" viewBox="0 0 24 24"><path d="M3 9.5a14 14 0 0 1 18 0"/><path d="M6 13a9.5 9.5 0 0 1 12 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="0.9" fill="currentColor" stroke="none"/></svg>
@@ -253,6 +256,7 @@
       if (x) send('notif:remove:' + x.closest('.card').dataset.id);
     });
     $('clear').addEventListener('click', () => send('notif:clear'));
+    $('open-settings').addEventListener('click', () => send('settings')); // ouvre la fenêtre des réglages
     setInterval(() => { if (notices.items.length) renderNotices(); }, 60000); // « il y a … » avance
 
     // --- session : les actions qui ferment la session demandent un second clic ---

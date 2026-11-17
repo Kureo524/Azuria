@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azuria — réglages</title>
+  <link rel="stylesheet" href="encre.css">
+  <style>
+    /* Réglages (DA §9) : colonne de navigation de 200 en verre léger, contenu à droite. Chaque
+       réglage s'applique tout de suite, là où il est (SettingsWindow.cs). */
+    .settings { display: flex; height: 100%; }
+    nav {
+      width: 200px; flex: 0 0 auto; padding: 18px 12px; display: flex; flex-direction: column; gap: 2px;
+      background: var(--glass); border-right: 1px solid var(--border);
+    }
+    nav h1 { font-size: 15px; font-weight: 700; padding: 0 10px 12px; }
+    nav button {
+      height: 30px; border: 0; border-radius: 10px; background: none; text-align: left; padding: 0 10px;
+      color: var(--text-2); font: 400 12px var(--font); cursor: default; display: flex; align-items: center; gap: 10px;
+      transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
+    }
+    nav button .i { width: 16px; height: 16px; }
+    nav button:hover { background: var(--hover); color: var(--text); }
+    nav button.active { background: var(--accent-soft); color: var(--text); }
+    nav .spacer { flex: 1 1 auto; }
+    nav .ver { padding: 0 10px; }
+
+    main { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 22px 24px; position: relative; }
+    main::-webkit-scrollbar { width: 6px; }
+    main::-webkit-scrollbar-thumb { background: var(--surface-raised); border-radius: 3px; }
+    section { display: none; flex-direction: column; gap: 6px; }
+    section.shown { display: flex; }
+    h2 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+    h3 { font-size: 11px; font-weight: 600; color: var(--text-3); margin: 14px 0 2px 12px; }
+
+    /* Ligne de réglage : libellé et aide à gauche, contrôle à droite */
+    .row {
+      min-height: 40px; padding: 8px 12px; border-radius: 12px; display: flex; align-items: center; gap: 16px;
+      transition: background var(--dur-hover) var(--ease-in);
+    }
+    .row:hover { background: var(--hover); }
+    .row .txt { flex: 1 1 auto; min-width: 0; }
+    .row .name { font-size: 13px; }
+    .row .help { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+
+    /* Interrupteur (DA §10) : 32 × 18, rayon 9 */
+    .switch {
+      width: 32px; height: 18px; border-radius: 9px; flex: 0 0 auto; position: relative;
+      background: var(--surface-raised); border: 1px solid var(--border-strong);
+      transition: background var(--dur-hover) var(--ease-in), border-color var(--dur-hover) var(--ease-in);
+    }
+    .switch::after {
+      content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+      background: var(--text-2); transition: transform var(--dur-hover) var(--ease-in), background var(--dur-hover) var(--ease-in);
+    }
+    .switch.on { background: var(--accent-tint); border-color: transparent; }
+    .switch.on::after { transform: translateX(14px); background: #fff; }
+
+    /* Pastilles de couleur (DA §10) : 22 × 22, rayon 8 ; choisie : bordure 2 en --text */
+    .swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+    .swatch {
+      width: 22px; height: 22px; border-radius: 8px; border: 1px solid var(--border-strong);
+      transition: transform var(--dur-hover) var(--ease-in);
+    }
+    .swatch:hover { transform: scale(1.08); }
+    .swatch.chosen { border: 2px solid var(--text); }
+
+    /* Aperçu de l'accent */
+    .preview { display: flex; gap: 8px; align-items: center; }
+    .chip { height: 24px; padding: 0 10px; border-radius: 9px; display: grid; place-items: center; font-size: 11px; font-weight: 600; }
+    .chip.soft { background: var(--accent-soft); color: var(--accent-text); }
+    .chip.tint { background: var(--accent-tint); color: #fff; }
+
+    .about { display: flex; align-items: center; gap: 16px; padding: 12px; }
+    .about img { width: 64px; height: 64px; }
+    .about .name { font-size: 15px; font-weight: 700; }
+    .mono { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); }
+  </style>
+</head>
+<body>
+  <script src="drawer.js"></script>
+  <div class="content settings">
+    <nav id="nav">
+      <h1>Réglages</h1>
+      <button data-s="look" class="active"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>Apparence</button>
+      <button data-s="windows"><svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="7.5" height="15" rx="2"/><rect x="13" y="4.5" width="7.5" height="7" rx="2"/><rect x="13" y="13" width="7.5" height="6.5" rx="2"/></svg>Fenêtres</button>
+      <button data-s="start"><svg class="i" viewBox="0 0 24 24"><path d="M12 3.5v8"/><path d="M7 6.5a7.5 7.5 0 1 0 10 0"/></svg>Démarrage</button>
+      <button data-s="about"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.8" r="0.9" fill="currentColor" stroke="none"/></svg>À propos</button>
+      <div class="spacer"></div>
+      <div class="mono ver" id="ver"></div>
+    </nav>
+
+    <main>
+      <section data-s="look" class="shown">
+        <h2>Apparence</h2>
+        <div class="row">
+          <div class="txt">
+            <div class="name">Accent</div>
+            <div class="help" id="accent-name">—</div>
+          </div>
+          <div class="swatches" id="swatches"></div>
+        </div>
+        <div class="row">
+          <div class="txt">
+            <div class="name">Aperçu</div>
+            <div class="help">Onglet choisi, bouton principal, contour de la fenêtre active</div>
+          </div>
+          <div class="preview"><span class="chip soft">Choisi</span><span class="chip tint">Principal</span></div>
+        </div>
+      </section>
+
+      <section data-s="windows">
+        <h2>Fenêtres</h2>
+        <div class="row" data-k="tiling">
+          <div class="txt">
+            <div class="name">Pavage automatique</div>
+            <div class="help">Les fenêtres se rangent seules et remplissent l'écran. Coupé, chacune reste où elle est.</div>
+          </div>
+          <div class="switch" id="sw-tiling"></div>
+        </div>
+        <div class="row" data-k="focus">
+          <div class="txt">
+            <div class="name">Le focus suit la souris</div>
+            <div class="help">La fenêtre sous le curseur devient active après un court arrêt dessus.</div>
+          </div>
+          <div class="switch" id="sw-focus"></div>
+        </div>
+      </section>
+
+      <section data-s="start">
+        <h2>Démarrage</h2>
+        <div class="row" data-k="startup">
+          <div class="txt">
+            <div class="name">Lancer Azuria à l'ouverture de session</div>
+            <div class="help">Azuria démarre seul après la connexion à Windows. Aucun droit d'administrateur requis.</div>
+          </div>
+          <div class="switch" id="sw-startup"></div>
+        </div>
+      </section>
+
+      <section data-s="about">
+        <h2>À propos</h2>
+        <div class="about">
+          <img src="logo.svg" alt="" onerror="this.remove()">
+          <div>
+            <div class="name">Azuria</div>
+            <div class="help" style="font-size:12px;color:var(--text-2);margin-top:4px">Environnement de bureau pour Windows 11</div>
+            <div class="mono" id="ver2" style="margin-top:6px"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const view = window.chrome?.webview;
+    const $ = id => document.getElementById(id);
+    const send = m => view?.postMessage(m);
+    let state = null;
+
+    // Navigation
+    $('nav').addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
+      document.querySelectorAll('main section').forEach(s => s.classList.toggle('shown', s.dataset.s === b.dataset.s));
+    });
+
+    // Interrupteurs : toute la ligne est cliquable ; l'état affiché bascule tout de suite.
+    document.querySelectorAll('.row[data-k]').forEach(r => r.addEventListener('click', () => {
+      const k = r.dataset.k, sw = $('sw-' + k), on = !sw.classList.contains('on');
+      sw.classList.toggle('on', on);
+      send(`${k}:${on ? 1 : 0}`);
+    }));
+
+    // Teintes
+    $('swatches').addEventListener('click', e => {
+      const s = e.target.closest('.swatch');
+      if (s) send('accent:' + s.dataset.id);
+    });
+
+    function render(m) {
+      state = m;
+      $('swatches').innerHTML = m.accents.map(a =>
+        `<div class="swatch${a.id === m.accent ? ' chosen' : ''}" data-id="${a.id}" title="${a.name}" style="background:${a.hex}"></div>`).join('');
+      $('accent-name').textContent = (m.accents.find(a => a.id === m.accent) || m.accents[0]).name;
+      for (const k of ['tiling', 'focus', 'startup']) $('sw-' + k).classList.toggle('on', !!m[k]);
+      $('ver').textContent = 'v' + m.version;
+      $('ver2').textContent = 'Version ' + m.version;
+    }
+
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') send('close'); });
+    view?.addEventListener('message', e => { if (e.data?.type === 'settings') render(e.data); });
+    send('ready');
+  </script>
+</body>
+</html>
