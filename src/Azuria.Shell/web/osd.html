@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azuria — volume</title>
+  <link rel="stylesheet" href="encre.css">
+  <style>
+    /* OSD du volume : languette au bord droit, niveau vertical en --accent, réglable au survol. */
+    .osd { padding: 14px 0 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .val { font-family: var(--font-num); font-weight: 600; font-size: 14px; line-height: 1; color: var(--text-2); }
+    .track { flex: 1 1 auto; width: 8px; border-radius: 4px; background: var(--surface-raised); position: relative; cursor: pointer; }
+    .track::before { content: ""; position: absolute; inset: 0 -14px; }
+    .fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 4px; background: var(--accent); transition: height 0.12s var(--ease-in); }
+    .osd.muted .fill { background: var(--text-3); }
+    .ibtn { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: var(--text-2);
+            transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in); }
+    .ibtn:hover { background: var(--hover); color: var(--text); }
+    .ibtn .i { width: 18px; height: 18px; }
+  </style>
+</head>
+<body>
+  <script src="drawer.js"></script>
+  <div class="content osd" id="osd">
+    <div class="val" id="val">—</div>
+    <div class="track" id="track"><div class="fill" id="fill"></div></div>
+    <div class="ibtn" id="mute" title="Couper / rétablir"></div>
+  </div>
+  <script>
+    const view = window.chrome?.webview;
+    const $ = id => document.getElementById(id);
+    const ICON = {
+      off: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
+      low: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/>',
+      high: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path d="M18 7a7 7 0 0 1 0 10"/>',
+    };
+    let level = 0, muted = false, dragging = false, last = 0;
+    function draw() {
+      $('osd').classList.toggle('muted', muted);
+      $('fill').style.height = level + '%';
+      $('val').textContent = muted ? '—' : level;
+      $('mute').innerHTML = `<svg class="i" viewBox="0 0 24 24">${muted || level === 0 ? ICON.off : level < 50 ? ICON.low : ICON.high}</svg>`;
+    }
+    const track = $('track');
+    const at = e => { const r = track.getBoundingClientRect(); return Math.round(Math.max(0, Math.min(1, (r.bottom - e.clientY) / r.height)) * 100); };
+    const apply = (v, force) => {
+      level = v; muted = false; draw();
+      const now = performance.now();
+      if (force || now - last > 40) { last = now; view?.postMessage('volume:' + v); }
+    };
+    track.addEventListener('pointerdown', e => { dragging = true; track.setPointerCapture(e.pointerId); apply(at(e), true); });
+    track.addEventListener('pointermove', e => { if (dragging) apply(at(e)); });
+    track.addEventListener('pointerup', e => { if (dragging) { apply(at(e), true); dragging = false; } });
+    $('osd').addEventListener('wheel', e => { e.preventDefault(); apply(Math.max(0, Math.min(100, level + (e.deltaY < 0 ? 5 : -5))), true); }, { passive: false });
+    $('mute').addEventListener('click', () => view?.postMessage('mute'));
+    view?.addEventListener('message', e => {
+      const m = e.data;
+      if (m?.type !== 'volume') return;
+      if (!dragging) level = m.level;
+      muted = m.muted;
+      draw();
+    });
+    draw();
+  </script>
+</body>
+</html>

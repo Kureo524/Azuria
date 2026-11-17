@@ -17,12 +17,15 @@ internal sealed class ShellContext : ApplicationContext
     private readonly List<ScreenSurface> _surfaces = new();
     private readonly Taskbar? _taskbar;
     private readonly OpenWindows? _apps;
+    private readonly TrayHost? _tray;
     private readonly StartKey? _startKey;
     private readonly Tiler _tiler = new();
     private readonly Catalog _catalog;
     private readonly DashboardFeed? _dashboardFeed;
     private readonly RightPanelFeed? _rightFeed;
     private readonly BarFeed? _barFeed;
+    private readonly BarPopout? _popout;
+    private const int BarWidthLogical = 48;
     private readonly WallpaperFeed? _wallpaperFeed;
     private readonly DesktopIcons? _desktopIcons;
     private readonly System.Windows.Forms.Timer _fullScreenWatch = new() { Interval = 250 };
@@ -33,6 +36,7 @@ internal sealed class ShellContext : ApplicationContext
         // cadre : il réserve sa place, les tiroirs se calent ensuite sur la zone restante.
         _taskbar = new Taskbar();
         _desktopIcons = new DesktopIcons(); // le bureau n'a pas d'icônes (DA §7)
+        _tray = new TrayHost();             // la zone de notification, dans un popout de la barre
         BuildSurfaces();
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         // Appli plein écran (un jeu) : le verre de son écran se masque, les tiroirs sont suspendus.
@@ -47,7 +51,7 @@ internal sealed class ShellContext : ApplicationContext
         AppDomain.CurrentDomain.ProcessExit += (_, _) => RestoreWindows();
         AppDomain.CurrentDomain.UnhandledException += (_, _) => RestoreWindows();
 
-        var bar = new SidePanelWindow("left.html", right: false, widthLogical: 48);       // barre principale
+        var bar = new SidePanelWindow("left.html", right: false, widthLogical: BarWidthLogical); // barre principale
         var dashboard = new DashboardWindow();                                            // haut
         _dashboardFeed = new DashboardFeed(dashboard);                                    // média, mesures, météo
         var sidebar = new SidePanelWindow("right.html", right: true, widthLogical: 280);  // réglages + notifs
@@ -68,15 +72,23 @@ internal sealed class ShellContext : ApplicationContext
         _apps.Changed += () => { if (bar.Visible) SendApps(bar); };
         bar.PresenceChanged += (_, present) => { if (present) SendApps(bar); };
 
+        // Façon Caelestia : popouts au survol des icônes de la barre ; à droite, menu de session et
+        // OSD du volume en languettes au bord, le panneau droit gardant notifications et réglages rapides.
+        _popout = new BarPopout(bar, BarWidthLogical, _apps, _tray);
+        var session = new SessionWindow(a => _rightFeed.RunSession(a));
+        var osd = new OsdWindow { Blocked = () => session.IsShown || sidebar.IsShown };
+        _popout.AdjustedVolume += osd.Quiet;
+
         bar.MessageReceived += msg =>
         {
             if (msg == "launcher") launcher.Toggle(Cursor.Position);   // le logo ouvre / range le lanceur
             else if (msg == "quit") Shutdown();
-            else if (msg.StartsWith("session:"))                       // actions de session, sur place
+            else if (msg == "session")                                 // le bouton d'alimentation
             {
-                bar.Conceal();
-                _rightFeed.RunSession(msg[8..]);
+                sidebar.Conceal();
+                session.Toggle();
             }
+            else if (msg.StartsWith("volume:")) osd.Quiet();           // molette sur le son (BarFeed règle)
             else if (msg == "apps") SendApps(bar);                     // la page est prête
             else if (msg.StartsWith("app:") && long.TryParse(msg[4..], out long h))
             {
@@ -99,7 +111,7 @@ internal sealed class ShellContext : ApplicationContext
         };
         _catalog.Refresh(TimeSpan.Zero);
 
-        foreach (var w in new GlassWindow[] { bar, dashboard, sidebar, launcher, settings })
+        foreach (var w in new GlassWindow[] { bar, dashboard, sidebar, launcher, settings, _popout.Window, session, osd })
         {
             w.Moved += OnDrawerMoved;
             w.PresenceChanged += OnDrawerPresence;
@@ -137,9 +149,11 @@ internal sealed class ShellContext : ApplicationContext
         _dashboardFeed?.Dispose();
         _rightFeed?.Dispose();
         _barFeed?.Dispose();
+        _popout?.Dispose();
         _wallpaperFeed?.Dispose();
         _desktopIcons?.Dispose();
         _apps?.Dispose();
+        _tray?.Dispose();
         _taskbar?.Dispose();
         DisposeSurfaces();
         foreach (var d in _drawers.ToList()) d.Dispose();
@@ -180,7 +194,7 @@ internal sealed class ShellContext : ApplicationContext
     // Un tiroir latéral occupe son côté : ses congés remplacent les coins du cadre de ce côté.
     private void OnDrawerPresence(GlassWindow drawer, bool present)
     {
-        if (drawer.Edge is not (DrawerEdge.Left or DrawerEdge.Right)) return;
+        if (drawer is not SidePanelWindow) return; // les languettes et popouts gardent les coins du cadre
         SurfaceOf(drawer.AnchorScreen)?.SetSideOccupied(drawer.Edge, present);
     }
 
