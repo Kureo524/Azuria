@@ -220,21 +220,28 @@ De haut en bas :
   `--accent-soft` et un repère `--accent` de 3 au bord gauche. Un clic l'active, un clic sur celle au premier plan la
   réduit ;
 - l'heure en vertical (heures au-dessus des minutes, Barlow Condensed) et la date courte ;
-- les icônes d'état (réseau et force du Wi-Fi, son, batterie avec son pourcentage, `--warning` sous 20 %, `--danger` sous
-  10 %) ;
+- les icônes d'état (zone de notification, réseau et force du Wi-Fi, son, batterie avec son pourcentage, `--warning`
+  sous 20 %, `--danger` sous 10 %) ;
 - le bouton d'alimentation (prend `--danger` au survol seulement) : il fait sortir le **menu de session** du bord droit.
 - Séparateurs horizontaux 24 × 1 en `--border-strong` entre les groupes.
 - **Molette** : sur le son, le volume ; sur les bureaux, le bureau suivant ou précédent.
 
-**Popouts de la barre** (idée de Caelestia) — survoler une icône d'état ou une appli ouverte fait sortir, du flanc
-droit de la barre et à sa hauteur, un petit tiroir de 280 de large, rayon 14 côté libre, raccordé à la barre par deux
+**Popouts de la barre** (idée de Caelestia) — survoler un bureau, une appli ouverte, l'heure ou une icône d'état
+fait sortir, du flanc droit de la barre et à sa hauteur, un petit tiroir de 280 de large, rayon 14 côté libre, raccordé à la barre par deux
 congés concaves (glissé de 10 depuis la barre). Il suit le curseur d'une icône à l'autre, reste tant que le curseur
 est dessus, se range 0,18 s après l'avoir quitté. Contenu, **réglable sur place** :
 - **réseau** : connexion (nom, type, signal), bascules Wi-Fi et Bluetooth (masquées sans radio) ;
 - **son** : curseur de volume (molette, l'icône coupe le son) et **choix de la sortie audio** (liste défilante, nom du
   périphérique en 12, pilote en 10 `--text-3`) ;
 - **batterie** : pourcentage en grand, jauge, état de charge ;
-- **appli** : icône et titre, **aperçu en direct** de la fenêtre (miniature de DWM, 256 de large), un clic y va.
+- **appli** : icône et titre, **aperçu en direct** de la fenêtre (miniature de DWM, 256 de large), un clic y va ;
+- **bureau** : son nom (celui de Windows, sinon « Bureau N »), ses fenêtres (icône 18 et titre ; un clic y va, en
+  changeant de bureau si besoin) et « Y aller » (`--accent-text` sur `--accent-soft`) pour un autre bureau ;
+- **heure** : l'heure en grand (Barlow Condensed 34, secondes en 15 `--text-3`), la date longue et la semaine ISO, le
+  calendrier du mois (toujours six semaines, aujourd'hui sur `--accent-soft`, week-end en `--text-3`) ; flèches ou
+  molette pour changer de mois, un clic sur le mois revient à aujourd'hui ;
+- **zone de notification** : les icônes des applis (tray) en grille de six, l'info-bulle de l'icône survolée dessous ;
+  clic, double-clic et clic droit sont rendus à l'appli comme le ferait Windows (son menu s'ouvre au curseur).
 
 **Règle générale** : un réglage visible dans un panneau se modifie là où il est, jamais en renvoyant vers un autre
 panneau.

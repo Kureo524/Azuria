@@ -9,7 +9,8 @@ namespace Azuria.Shell;
 /// Popout de la barre (idée de Caelestia, réécrite ici) : un petit tiroir qui sort du flanc droit de
 /// la barre, à hauteur de l'icône survolée, raccordé à elle par deux congés concaves. Il montre et
 /// règle sur place ce que l'icône résume : réseau (Wi-Fi, Bluetooth), son (volume, sortie audio),
-/// batterie, ou une appli ouverte (titre et aperçu en direct).
+/// batterie, une appli ouverte (titre et aperçu en direct), l'heure (calendrier), un bureau virtuel
+/// (ses fenêtres) ou la zone de notification (icônes des applis).
 /// </summary>
 internal sealed class PopoutWindow : GlassWindow
 {
@@ -77,6 +78,7 @@ internal sealed class BarPopout : IDisposable
     private readonly GlassWindow _bar;
     private readonly PopoutWindow _pop;
     private readonly OpenWindows _apps;
+    private readonly TrayHost _tray;
     private readonly int _barBodyLogical;
     private readonly Radios _radios = new();
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 40 };
@@ -93,19 +95,22 @@ internal sealed class BarPopout : IDisposable
     /// <summary>Un réglage vient d'être changé depuis la barre (l'OSD n'a pas à le répéter).</summary>
     public event Action? AdjustedVolume;
 
-    public BarPopout(GlassWindow bar, int barBodyLogical, OpenWindows apps)
+    public BarPopout(GlassWindow bar, int barBodyLogical, OpenWindows apps, TrayHost tray)
     {
         _bar = bar;
         _barBodyLogical = barBodyLogical;
         _apps = apps;
+        _tray = tray;
         _pop = new PopoutWindow();
+        _tray.Changed += () => { if (_pop.Visible && _key == "tray") SendContent(); };
+        _apps.Changed += () => { if (_pop.Visible && _key.StartsWith("desk:")) SendContent(); };
         _bar.KeepAlso = p => _pop.Visible && Rectangle.Inflate(_pop.Bounds, 4, 4).Contains(p);
         _bar.MessageReceived += OnBarMessage;
         _pop.MessageReceived += OnPopMessage;
         _radios.Changed += () => { if (_pop.Visible && _key == "net") SendContent(); };
         _radios.Start();
         _tick.Tick += (_, _) => Follow();
-        _refresh.Tick += (_, _) => { if (_pop.Visible && _key is "net" or "snd" or "bat") SendContent(); };
+        _refresh.Tick += (_, _) => { if (_pop.Visible && (_key is "net" or "snd" or "bat" || _key.StartsWith("desk:"))) SendContent(); };
         _tick.Start();
         _refresh.Start();
     }
@@ -129,7 +134,7 @@ internal sealed class BarPopout : IDisposable
         if (_hover is { } h)
         {
             _lostAt = 0;
-            string key = h.Kind == "app" ? "app:" + h.Id : h.Kind;
+            string key = h.Kind is "app" or "desk" ? h.Kind + ":" + h.Id : h.Kind;
             if (key != _key || !_pop.IsShown) Show(h, key);
             return;
         }
@@ -188,12 +193,30 @@ internal sealed class BarPopout : IDisposable
                 var (pct, charging) = SystemStats.Battery();
                 body = new { type = "bat", percent = pct, charging };
                 break;
+            case "clock":
+                body = new { type = "clock" }; // la page tient l'heure et le calendrier
+                break;
+            case "tray":
+                body = new { type = "tray", icons = _tray.Icons().Select(i => new { key = i.Key, tip = i.Tip, icon = i.Png }) };
+                break;
             default:
                 if (_key.StartsWith("app:") && long.TryParse(_key[4..], out long hw))
                 {
                     var w = _apps.List().FirstOrDefault(a => a.Handle == (nint)hw);
                     if (w is null) { Hide(); return; }
                     body = new { type = "app", title = w.Title, icon = w.Icon, thumb = ThumbHeightCss((nint)hw) };
+                }
+                else if (_key.StartsWith("desk:") && int.TryParse(_key[5..], out int di))
+                {
+                    var ids = VirtualDesktops.Ids();
+                    var (count, current) = VirtualDesktops.State();
+                    if (di >= count) { Hide(); return; }
+                    var wins = di == current ? _apps.List() : _apps.OnDesk(di < ids.Count ? ids[di] : Guid.Empty);
+                    body = new
+                    {
+                        type = "desk", name = VirtualDesktops.Name(di, ids), current = di == current,
+                        windows = wins.Select(w => new { id = (long)w.Handle, title = w.Title, icon = w.Icon, active = w.Active }),
+                    };
                 }
                 break;
         }
@@ -231,8 +254,32 @@ internal sealed class BarPopout : IDisposable
             case "activate":
                 if (_key.StartsWith("app:") && long.TryParse(_key[4..], out long hw)) { _apps.Activate((nint)hw); Hide(); }
                 return;
+            case "desk-go":
+                if (DeskIndex() is int go) { VirtualDesktops.SwitchTo(go); Hide(); }
+                return;
+            case "desk-win":
+                if (DeskIndex() is int d && long.TryParse(p.ElementAtOrDefault(1), out long dw)) { GoToWindow(d, (nint)dw); Hide(); }
+                return;
+            case "tray":
+                // « tray:<clé>:<left|double|right> »
+                var t = p.ElementAtOrDefault(1)?.Split(':');
+                if (t is { Length: 2 }) { _tray.Click(t[0], t[1]); Hide(); }
+                return;
             case "ready": SendContent(); return;
         }
+    }
+
+    private int? DeskIndex() => _key.StartsWith("desk:") && int.TryParse(_key[5..], out int i) ? i : null;
+
+    // Une fenêtre d'un autre bureau : on y va d'abord (Windows la démasque), puis on l'active.
+    private async void GoToWindow(int desk, nint h)
+    {
+        if (VirtualDesktops.State().Current != desk)
+        {
+            VirtualDesktops.SwitchTo(desk);
+            await Task.Delay(350);
+        }
+        _apps.Activate(h);
     }
 
     // ----- aperçu en direct d'une appli (miniature DWM : DWM recopie l'image de la fenêtre dans la

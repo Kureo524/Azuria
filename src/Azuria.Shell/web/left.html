@@ -6,7 +6,7 @@
   <title>Azuria — barre</title>
   <link rel="stylesheet" href="encre.css">
   <style>
-    /* Barre principale verticale (DA §9) : logo, bureaux, heure, état, alimentation. */
+    /* Barre principale verticale (DA §9) : logo, bureaux, heure, état (tray, réseau, son, batterie), alimentation. */
     .bar {
       display: flex; flex-direction: column; align-items: center;
       gap: 6px; padding: 12px 0;
@@ -83,7 +83,7 @@
 
     <div class="spacer"></div>
 
-    <div class="clock">
+    <div class="clock" data-pop="clock">
       <span id="hh">00</span><span id="mm">00</span>
       <span class="date" id="date">—</span>
     </div>
@@ -91,6 +91,9 @@
     <div class="sep"></div>
 
     <div class="status" id="status">
+      <div class="btn" id="st-tray" data-pop="tray">
+        <svg class="i" viewBox="0 0 24 24"><path d="M7 14l5-5 5 5"/></svg>
+      </div>
       <div class="btn" id="st-net" data-pop="net"></div>
       <div class="btn" id="st-snd" data-pop="snd"></div>
       <div class="btn bat" id="st-bat" data-pop="bat" hidden></div>
@@ -106,6 +109,7 @@
     const svg = body => `<svg class="i" viewBox="0 0 24 24">${body}</svg>`;
 
     // Bureaux virtuels de Windows : un clic y va, « + » en crée un (géré par le C#, BarFeed).
+    // Survolé, un bureau montre ses fenêtres dans le popout.
     const desksEl = document.getElementById('desks');
     desksEl.addEventListener('click', e => {
       const d = e.target.closest('.desk');
@@ -113,7 +117,7 @@
     });
     function renderDesks(d) {
       let html = '';
-      for (let i = 0; i < d.count; i++) html += `<div class="desk${i === d.current ? ' active' : ''}" data-i="${i}">${i + 1}</div>`;
+      for (let i = 0; i < d.count; i++) html += `<div class="desk${i === d.current ? ' active' : ''}" data-i="${i}" data-pop="desk" data-id="${i}">${i + 1}</div>`;
       html += `<div class="desk add" data-i="new">${svg('<path d="M12 7v10M7 12h10"/>')}</div>`;
       desksEl.innerHTML = html;
     }

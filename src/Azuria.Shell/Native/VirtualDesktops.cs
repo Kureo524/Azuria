@@ -6,7 +6,8 @@ namespace Azuria.Shell.Native;
 /// <summary>
 /// Les bureaux virtuels de Windows. Windows n'offre pas d'API publique pour les lister ni pour en
 /// changer : on lit la liste et le bureau courant là où l'Explorateur les note (registre de
-/// l'utilisateur, lecture seule), et on change de bureau avec ses propres raccourcis
+/// l'utilisateur, lecture seule), le bureau d'une fenêtre par l'API documentée
+/// <c>IVirtualDesktopManager</c>, et on change de bureau avec ses propres raccourcis
 /// (Ctrl+Win+← / →, Ctrl+Win+D pour en créer un). Rien n'est injecté dans l'Explorateur.
 /// </summary>
 internal static class VirtualDesktops
@@ -28,6 +29,57 @@ internal static class VirtualDesktops
         }
         catch { return (1, 0); }
     }
+
+    /// <summary>Les identifiants des bureaux, dans l'ordre de Windows.</summary>
+    public static List<Guid> Ids()
+    {
+        var list = new List<Guid>();
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(RegKey);
+            if (k?.GetValue("VirtualDesktopIDs") is byte[] ids)
+                for (int i = 0; i + 16 <= ids.Length; i += 16) list.Add(new Guid(ids.AsSpan(i, 16)));
+        }
+        catch { /* lecture impossible : un seul bureau, sans identifiant */ }
+        return list;
+    }
+
+    /// <summary>Le nom donné au bureau dans Windows, ou « Bureau N ».</summary>
+    public static string Name(int index, List<Guid> ids)
+    {
+        try
+        {
+            if (index < ids.Count)
+            {
+                using var k = Registry.CurrentUser.OpenSubKey($@"{RegKey}\Desktops\{ids[index]:B}");
+                if (k?.GetValue("Name") is string { Length: > 0 } n) return n;
+            }
+        }
+        catch { /* nom illisible : le nom par défaut */ }
+        return $"Bureau {index + 1}";
+    }
+
+    /// <summary>
+    /// Le bureau d'une fenêtre (<c>IVirtualDesktopManager</c>, l'API documentée de Windows pour ça),
+    /// ou <see cref="Guid.Empty"/> si Windows ne le dit pas.
+    /// </summary>
+    public static Guid DesktopOf(nint hwnd)
+    {
+        try { return Manager.GetWindowDesktopId(hwnd, out var id) == 0 ? id : Guid.Empty; }
+        catch { return Guid.Empty; }
+    }
+
+    [ComImport, Guid("a5cd92ff-29be-454c-8d04-d82879fb3f1b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IVirtualDesktopManager
+    {
+        [PreserveSig] int IsWindowOnCurrentVirtualDesktop(nint hwnd, out int onCurrent);
+        [PreserveSig] int GetWindowDesktopId(nint hwnd, out Guid id);
+        [PreserveSig] int MoveWindowToDesktop(nint hwnd, ref Guid id);
+    }
+
+    private static IVirtualDesktopManager? _manager;
+    private static IVirtualDesktopManager Manager => _manager ??= (IVirtualDesktopManager)Activator.CreateInstance(
+        Type.GetTypeFromCLSID(new Guid("aa509086-5ca9-4c25-8f95-589d3c07b48a"))!)!;
 
     /// <summary>Va au bureau <paramref name="index"/>, d'autant de pas que nécessaire.</summary>
     public static void SwitchTo(int index)

@@ -75,7 +75,7 @@ internal sealed class Taskbar : IDisposable
     private static void SetState(int state)
     {
         var d = New();
-        d.hWnd = FindWindow("Shell_TrayWnd", null);
+        d.hWnd = TrayHost.ExplorerTray();
         d.lParam = state;
         SHAppBarMessage(ABM_SETSTATE, ref d);
     }
@@ -83,7 +83,7 @@ internal sealed class Taskbar : IDisposable
     // Barre principale et barres des écrans secondaires.
     private static IEnumerable<nint> Bars()
     {
-        nint main = FindWindow("Shell_TrayWnd", null);
+        nint main = TrayHost.ExplorerTray();
         if (main != 0) yield return main;
         nint h = 0;
         while ((h = FindWindowEx(0, h, "Shell_SecondaryTrayWnd", null)) != 0) yield return h;

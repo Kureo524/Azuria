@@ -17,6 +17,7 @@ internal sealed class ShellContext : ApplicationContext
     private readonly List<ScreenSurface> _surfaces = new();
     private readonly Taskbar? _taskbar;
     private readonly OpenWindows? _apps;
+    private readonly TrayHost? _tray;
     private readonly StartKey? _startKey;
     private readonly Tiler _tiler = new();
     private readonly Catalog _catalog;
@@ -35,6 +36,7 @@ internal sealed class ShellContext : ApplicationContext
         // cadre : il réserve sa place, les tiroirs se calent ensuite sur la zone restante.
         _taskbar = new Taskbar();
         _desktopIcons = new DesktopIcons(); // le bureau n'a pas d'icônes (DA §7)
+        _tray = new TrayHost();             // la zone de notification, dans un popout de la barre
         BuildSurfaces();
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         // Appli plein écran (un jeu) : le verre de son écran se masque, les tiroirs sont suspendus.
@@ -72,7 +74,7 @@ internal sealed class ShellContext : ApplicationContext
 
         // Façon Caelestia : popouts au survol des icônes de la barre ; à droite, menu de session et
         // OSD du volume en languettes au bord, le panneau droit gardant notifications et réglages rapides.
-        _popout = new BarPopout(bar, BarWidthLogical, _apps);
+        _popout = new BarPopout(bar, BarWidthLogical, _apps, _tray);
         var session = new SessionWindow(a => _rightFeed.RunSession(a));
         var osd = new OsdWindow { Blocked = () => session.IsShown || sidebar.IsShown };
         _popout.AdjustedVolume += osd.Quiet;
@@ -151,6 +153,7 @@ internal sealed class ShellContext : ApplicationContext
         _wallpaperFeed?.Dispose();
         _desktopIcons?.Dispose();
         _apps?.Dispose();
+        _tray?.Dispose();
         _taskbar?.Dispose();
         DisposeSurfaces();
         foreach (var d in _drawers.ToList()) d.Dispose();

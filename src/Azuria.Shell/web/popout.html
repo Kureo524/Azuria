@@ -68,6 +68,38 @@
 
     /* Appli : l'aperçu en direct est posé par DWM sur ce cadre (BarPopout.ThumbTopCss) */
     .thumb { width: 256px; border-radius: 10px; background: var(--surface-raised); border: 1px solid var(--border); cursor: pointer; }
+
+    /* Heure : grande heure, date, calendrier du mois (navigable) */
+    .time { font-family: var(--font-num); font-weight: 600; font-size: 34px; line-height: 1; }
+    .time small { font-size: 15px; color: var(--text-3); margin-left: 4px; }
+    .cal { display: flex; flex-direction: column; gap: 6px; }
+    .cal .nav { display: flex; align-items: center; gap: 4px; }
+    .cal .month { flex: 1 1 auto; font-size: 12px; font-weight: 700; text-transform: capitalize; border-radius: 8px; padding: 4px 6px; }
+    .cal .month.away { cursor: pointer; color: var(--accent-text); }
+    .cal .month.away:hover { background: var(--hover); }
+    .cal .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+    .cal .wd { font-size: 10px; color: var(--text-3); line-height: 20px; }
+    .cal .d { font-family: var(--font-num); font-size: 12px; line-height: 28px; color: var(--text-2); border-radius: 8px; }
+    .cal .d.out { color: var(--text-3); opacity: 0.5; }
+    .cal .d.we { color: var(--text-3); }
+    .cal .d.today { background: var(--accent-soft); color: var(--accent-text); font-weight: 700; }
+
+    /* Bureau : ses fenêtres */
+    .item img { width: 18px; height: 18px; flex: 0 0 auto; }
+    .item.cur { background: var(--accent-soft); color: var(--text); }
+    .btn-go {
+      height: 26px; padding: 0 10px; border-radius: 8px; display: flex; align-items: center; flex: 0 0 auto;
+      font-size: 11px; font-weight: 600; color: var(--accent-text); background: var(--accent-soft);
+      transition: background var(--dur-hover) var(--ease-in);
+    }
+    .btn-go:hover { background: var(--accent-tint); }
+
+    /* Zone de notification : grille d'icônes */
+    .tray { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+    .ti { height: 38px; border-radius: 10px; display: grid; place-items: center; transition: background var(--dur-hover) var(--ease-in); }
+    .ti:hover { background: var(--hover); }
+    .ti img { width: 20px; height: 20px; }
+    .tip { font-size: 11px; color: var(--text-2); min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   </style>
 </head>
 <body>
@@ -139,6 +171,46 @@
           <div class="head">${m.icon ? `<img src="${m.icon}" alt="">` : ''}<div class="title" title="${esc(m.title)}">${esc(m.title)}</div></div>
           <div class="thumb" id="thumb" style="height:${m.thumb}px" title="Aller à cette fenêtre"></div>`;
         $('thumb').addEventListener('click', () => send('activate'));
+      } else if (m.type === 'clock') {
+        if (pop.dataset.kind !== 'clock') {
+          shift = 0;
+          pop.innerHTML = `
+            <div class="time" id="time"></div>
+            <div class="sub" id="today"></div>
+            <div class="cal">
+              <div class="nav"><div class="month" id="month"></div>
+                <div class="ibtn" id="prev" title="Mois précédent">${svg('<path d="M14.5 6l-6 6 6 6"/>')}</div>
+                <div class="ibtn" id="next" title="Mois suivant">${svg('<path d="M9.5 6l6 6-6 6"/>')}</div></div>
+              <div class="grid" id="grid"></div>
+            </div>`;
+          $('prev').addEventListener('click', () => { shift--; calendar(); });
+          $('next').addEventListener('click', () => { shift++; calendar(); });
+          $('month').addEventListener('click', () => { if (shift) { shift = 0; calendar(); } });
+          clockTick();
+          calendar();
+        }
+      } else if (m.type === 'desk') {
+        const sig = JSON.stringify(m);   // relu chaque seconde : on ne redessine (et ne perd le défilement) que si ça change
+        if (pop.dataset.kind === 'desk' && sig === lastDesk) return;
+        lastDesk = sig;
+        pop.innerHTML = `
+          <div class="head">${svg('<rect x="3.5" y="5" width="17" height="12" rx="2"/><path d="M9 20.5h6"/>')}<div class="title">${esc(m.name)}</div>
+            ${m.current ? '<span class="sub">Bureau actuel</span>' : '<div class="btn-go" id="go">Y aller</div>'}</div>
+          <div class="list" id="wins">${m.windows.map(w =>
+            `<div class="item${w.active ? ' cur' : ''}" data-id="${w.id}" title="${esc(w.title)}">${w.icon ? `<img src="${w.icon}" alt="">` : ''}<span>${esc(w.title)}</span></div>`).join('')
+            || '<div class="sub">Aucune fenêtre</div>'}</div>`;
+        $('go')?.addEventListener('click', () => send('desk-go'));
+        $('wins').addEventListener('click', e => { const it = e.target.closest('.item'); if (it) send('desk-win:' + it.dataset.id); });
+      } else if (m.type === 'tray') {
+        const sig = JSON.stringify(m.icons);  // des applis renvoient leur icône en continu : on ne redessine que si ça change
+        if (pop.dataset.kind === 'tray' && sig === lastTray) return;
+        lastTray = sig;
+        pop.innerHTML = `
+          <div class="head">${svg('<path d="M7 14l5-5 5 5"/>')}<div class="title">Zone de notification</div></div>
+          ${m.icons.length ? `<div class="tray" id="tray">${m.icons.map(i =>
+            `<div class="ti" data-k="${esc(i.key)}" data-tip="${esc(i.tip)}">${i.icon ? `<img src="${i.icon}" alt="">` : svg('<circle cx="12" cy="12" r="3"/>')}</div>`).join('')}</div>
+            <div class="tip" id="tip"></div>` : '<div class="sub">Aucune icône</div>'}`;
+        wireTray();
       }
       pop.dataset.kind = m.type;
       report();
@@ -174,6 +246,75 @@
         { const i = o.name.indexOf(' ('), main = i > 0 ? o.name.slice(0, i) : o.name, dev = i > 0 ? o.name.slice(i + 2).replace(/\)$/, '') : '';
           return `<div class="item${o.active ? ' on' : ''}" data-id="${esc(o.id)}" title="${esc(o.name)}"><div class="dot"></div><div class="names"><span>${esc(main)}</span>${dev ? `<small>${esc(dev)}</small>` : ''}</div></div>`; }).join('')
         || '<div class="sub">Aucune sortie audio</div>';
+    }
+
+    // ----- heure et calendrier (tenus par la page) -----
+    const jours = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+    const mois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    const two = n => String(n).padStart(2, '0');
+    let shift = 0, calDay = -1;
+    let lastDesk = '', lastTray = '', trayHover = null;
+    // Semaine ISO 8601 (celle des agendas français).
+    function week(d) {
+      const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+      return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
+    }
+    function clockTick() {
+      if (!$('time')) return;
+      const d = new Date();
+      $('time').innerHTML = `${two(d.getHours())}:${two(d.getMinutes())}<small>${two(d.getSeconds())}</small>`;
+      $('today').textContent = `${jours[d.getDay()]} ${d.getDate()} ${mois[d.getMonth()]} ${d.getFullYear()} · semaine ${week(d)}`;
+      if (d.getDate() !== calDay) calendar(); // minuit passé
+    }
+    // Toujours six semaines : la hauteur du popout ne saute pas d'un mois à l'autre.
+    function calendar() {
+      const now = new Date();
+      calDay = now.getDate();
+      const first = new Date(now.getFullYear(), now.getMonth() + shift, 1);
+      const y = first.getFullYear(), mo = first.getMonth();
+      $('month').textContent = `${mois[mo]} ${y}`;
+      $('month').classList.toggle('away', shift !== 0);
+      $('month').title = shift ? 'Revenir à aujourd’hui' : '';
+      const start = new Date(y, mo, 1 - (first.getDay() + 6) % 7); // lundi
+      let html = ['L', 'M', 'M', 'J', 'V', 'S', 'D'].map(w => `<div class="wd">${w}</div>`).join('');
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        const cls = d.getMonth() !== mo ? ' out' : d.toDateString() === now.toDateString() ? ' today' : i % 7 >= 5 ? ' we' : '';
+        html += `<div class="d${cls}">${d.getDate()}</div>`;
+      }
+      $('grid').innerHTML = html;
+    }
+    function wheelMonth(e) {
+      if (pop.dataset.kind !== 'clock' || !e.target.closest('.cal')) return;
+      e.preventDefault();
+      shift += e.deltaY > 0 ? 1 : -1;
+      calendar();
+    }
+    pop.addEventListener('wheel', wheelMonth, { passive: false }); // la molette change de mois
+    setInterval(() => { if (pop.dataset.kind === 'clock') clockTick(); }, 1000);
+
+    // ----- zone de notification : clic, double-clic et clic droit rendus à l'appli -----
+    function wireTray() {
+      const tray = $('tray');
+      if (!tray) return;
+      let pending = 0;
+      const key = e => e.target.closest('.ti')?.dataset.k;
+      const showTip = () => {
+        const t = trayHover && [...tray.children].find(c => c.dataset.k === trayHover);
+        $('tip').textContent = t?.dataset.tip || '';
+      };
+      tray.addEventListener('mouseover', e => { trayHover = e.target.closest('.ti')?.dataset.k ?? null; showTip(); });
+      tray.addEventListener('mouseleave', () => { trayHover = null; showTip(); });
+      showTip(); // après une mise à jour, l'icône survolée garde son info-bulle
+      tray.addEventListener('click', e => {
+        const k = key(e);
+        if (!k) return;
+        clearTimeout(pending);
+        pending = setTimeout(() => send(`tray:${k}:left`), 220); // attend un éventuel double-clic
+      });
+      tray.addEventListener('dblclick', e => { const k = key(e); if (k) { clearTimeout(pending); send(`tray:${k}:double`); } });
+      tray.addEventListener('contextmenu', e => { e.preventDefault(); const k = key(e); if (k) send(`tray:${k}:right`); });
     }
 
     pop.addEventListener('click', e => {

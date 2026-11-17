@@ -84,6 +84,24 @@ internal sealed class OpenWindows : IDisposable
         return result;
     }
 
+    /// <summary>
+    /// Les applis d'un autre bureau virtuel. Windows les masque (« cloaked » par le shell) tant qu'on
+    /// n'y est pas : on les reconnaît à ce masquage et au bureau que Windows leur donne.
+    /// </summary>
+    public List<OpenWindow> OnDesk(Guid desk)
+    {
+        var result = new List<OpenWindow>();
+        if (desk == Guid.Empty) return result;
+        EnumWindows((h, _) =>
+        {
+            if (IsAppWindow(h, otherDesk: true) && VirtualDesktops.DesktopOf(h) == desk)
+                result.Add(new OpenWindow(h, Title(h), IconOf(h, out var _key), false));
+            return true;
+        }, 0);
+        result.Sort((a, b) => a.Handle.CompareTo(b.Handle));
+        return result;
+    }
+
     /// <summary>Clic sur une appli : l'active, ou la réduit si elle est déjà au premier plan.</summary>
     public void Activate(nint h)
     {
@@ -100,14 +118,16 @@ internal sealed class OpenWindows : IDisposable
 
     // Mêmes règles que la barre des tâches : visible, pas masquée (« cloaked »), sans propriétaire
     // ou marquée « appli », pas une palette d'outils ; jamais les fenêtres d'Azuria.
-    internal static bool IsAppWindow(nint h)
+    internal static bool IsAppWindow(nint h, bool otherDesk = false)
     {
         if (!IsWindowVisible(h) || GetWindowTextLength(h) == 0) return false;
         int ex = GetWindowLong(h, GWL_EXSTYLE);
         bool appWindow = (ex & WS_EX_APPWINDOW) != 0;
         if (!appWindow && ((ex & WS_EX_TOOLWINDOW) != 0 || (ex & WS_EX_NOACTIVATE) != 0)) return false;
         if (!appWindow && GetWindow(h, GW_OWNER) != 0) return false;
-        if (DwmGetWindowAttribute(h, DWMWA_CLOAKED, out int cloaked, sizeof(int)) == 0 && cloaked != 0) return false;
+        // Sur un autre bureau : seulement les fenêtres masquées par le shell (DWM_CLOAKED_SHELL).
+        int cloaked = DwmGetWindowAttribute(h, DWMWA_CLOAKED, out int c, sizeof(int)) == 0 ? c : 0;
+        if (otherDesk ? cloaked != 2 : cloaked != 0) return false;
         GetWindowThreadProcessId(h, out uint pid);
         return pid != OwnPid;
     }
