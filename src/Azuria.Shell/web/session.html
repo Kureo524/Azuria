@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azuria — session</title>
+  <link rel="stylesheet" href="encre.css">
+  <style>
+    /* Menu de session (DA §9) : boutons empilés dans une languette au bord droit. L'action qui ferme
+       la session ne prend --danger qu'au survol ; elle demande un second clic. */
+    .session { padding: 12px 10px; display: flex; flex-direction: column; gap: 6px; }
+    .s {
+      height: 56px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+      color: var(--text-2); transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
+    }
+    .s .i { width: 20px; height: 20px; }
+    .s span { font-size: 10px; line-height: 1; white-space: nowrap; }
+    .s:hover { background: var(--hover); color: var(--text); }
+    .s.danger:hover, .s.arm { color: var(--danger); }
+    .s.arm { background: rgba(217, 100, 108, 0.14); }
+  </style>
+</head>
+<body>
+  <script src="drawer.js"></script>
+  <div class="content session" id="list">
+    <div class="s" data-a="lock"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg><span>Verrouiller</span></div>
+    <div class="s" data-a="sleep"><svg class="i" viewBox="0 0 24 24"><path d="M19 14.5A8 8 0 0 1 9.5 5a8 8 0 1 0 9.5 9.5z"/></svg><span>Veille</span></div>
+    <div class="s danger" data-a="signout" data-confirm><svg class="i" viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/></svg><span>Déconnexion</span></div>
+    <div class="s danger" data-a="restart" data-confirm><svg class="i" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4.5v4h-4"/></svg><span>Redémarrer</span></div>
+    <div class="s danger" data-a="shutdown" data-confirm><svg class="i" viewBox="0 0 24 24"><path d="M12 3.5v8"/><path d="M7 6.5a7.5 7.5 0 1 0 10 0"/></svg><span>Éteindre</span></div>
+    <div class="s" data-a="quit"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg><span>Quitter</span></div>
+  </div>
+  <script>
+    const view = window.chrome?.webview;
+    let armed = null, timer = 0;
+    const disarm = () => { armed?.classList.remove('arm'); armed?.querySelector('span') && (armed.querySelector('span').textContent = armed.dataset.label); armed = null; clearTimeout(timer); };
+    document.querySelectorAll('.s').forEach(s => s.dataset.label = s.querySelector('span').textContent);
+    document.getElementById('list').addEventListener('click', e => {
+      const b = e.target.closest('.s');
+      if (!b) return;
+      if (b.hasAttribute('data-confirm') && armed !== b) {
+        disarm();
+        armed = b;
+        b.classList.add('arm');
+        b.querySelector('span').textContent = 'Confirmer';
+        timer = setTimeout(disarm, 3000);
+        return;
+      }
+      disarm();
+      view?.postMessage('session:' + b.dataset.a);
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { disarm(); view?.postMessage('close'); } });
+  </script>
+</body>
+</html>

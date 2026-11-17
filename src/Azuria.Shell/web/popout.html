@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azuria — popout</title>
+  <link rel="stylesheet" href="encre.css">
+  <style>
+    /* Popout de la barre (DA §9) : le détail de l'icône survolée, réglable sur place. Le contenu
+       vient du C# (BarPopout.cs). La page annonce sa hauteur pour que le verre la suive. */
+    .pop { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .head { height: 28px; display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+    .head .i { width: 18px; height: 18px; color: var(--text-2); flex: 0 0 auto; }
+    .head img { width: 22px; height: 22px; flex: 0 0 auto; }
+    .title { font-size: 13px; font-weight: 700; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sub { font-size: 11px; color: var(--text-3); }
+    .val { font-family: var(--font-num); font-weight: 600; font-size: 15px; color: var(--text-2); }
+
+    /* Bascules (même famille que le panneau droit) */
+    .toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .toggle {
+      height: 44px; border-radius: 12px; padding: 0 10px; display: flex; align-items: center; gap: 8px;
+      background: var(--surface-raised); border: 1px solid var(--border); color: var(--text-2);
+      transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
+    }
+    .toggle:hover { background: var(--hover); color: var(--text); }
+    .toggle.on { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+    .toggle[hidden] { display: none; }
+    .toggle .n { font-size: 12px; font-weight: 600; }
+
+    /* Curseur horizontal */
+    .slider { display: flex; align-items: center; gap: 10px; }
+    .ibtn {
+      width: 28px; height: 28px; border-radius: 8px; flex: 0 0 auto; display: grid; place-items: center; color: var(--text-2);
+      transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
+    }
+    .ibtn:hover { background: var(--hover); color: var(--text); }
+    .track { flex: 1 1 auto; height: 6px; border-radius: 3px; background: var(--surface-raised); position: relative; cursor: pointer; }
+    .track::before { content: ""; position: absolute; inset: -8px 0; }
+    .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); }
+    .fill::after { content: ''; position: absolute; right: -6px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+    .slider.muted .fill, .slider.muted .fill::after { background: var(--text-3); }
+    .slider .val { width: 30px; text-align: right; }
+
+    /* Liste (sorties audio) */
+    .label { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+    .list { display: flex; flex-direction: column; gap: 2px; max-height: 214px; overflow-y: auto; margin-right: -6px; padding-right: 6px; }
+    .list::-webkit-scrollbar { width: 4px; }
+    .list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+    .item .names { display: flex; flex-direction: column; min-width: 0; }
+    .item .names small { font-size: 10px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item {
+      min-height: 32px; border-radius: 8px; padding: 6px 8px; display: flex; align-items: center; gap: 10px;
+      color: var(--text-2); font-size: 12px; transition: background var(--dur-hover) var(--ease-in), color var(--dur-hover) var(--ease-in);
+    }
+    .item:hover { background: var(--hover); color: var(--text); }
+    .item .dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--text-3); flex: 0 0 auto; }
+    .item.on { color: var(--text); }
+    .item.on .dot { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 2px var(--solid); }
+    .item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Batterie */
+    .big { font-family: var(--font-num); font-weight: 600; font-size: 34px; line-height: 1; }
+    .meter { height: 6px; border-radius: 3px; background: var(--surface-raised); position: relative; overflow: hidden; }
+    .meter .fill { border-radius: 3px; }
+    .meter.low .fill { background: var(--warning); }
+    .meter.critical .fill { background: var(--danger); }
+
+    /* Appli : l'aperçu en direct est posé par DWM sur ce cadre (BarPopout.ThumbTopCss) */
+    .thumb { width: 256px; border-radius: 10px; background: var(--surface-raised); border: 1px solid var(--border); cursor: pointer; }
+  </style>
+</head>
+<body>
+  <script src="drawer.js"></script>
+  <div class="content"><div class="pop" id="pop"></div></div>
+
+  <script>
+    const view = window.chrome?.webview;
+    const $ = id => document.getElementById(id);
+    const send = m => view?.postMessage(m);
+    const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const svg = (body, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24">${body}</svg>`;
+    const ICON = {
+      wifi: '<path d="M3 9.5a14 14 0 0 1 18 0"/><path d="M6 13a9.5 9.5 0 0 1 12 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="0.9" fill="currentColor" stroke="none"/>',
+      ethernet: '<rect x="8" y="3.5" width="8" height="6" rx="1"/><path d="M12 9.5v4M5 20.5v-4h14v4M12 13.5v7"/>',
+      none: '<path d="M3 9.5a14 14 0 0 1 18 0"/><path d="M6 13a9.5 9.5 0 0 1 12 0"/><path d="M4 4l16 16"/>',
+      bluetooth: '<path d="M7 7.5l10 9-5 4.5V3l5 4.5-10 9"/>',
+      off: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
+      high: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path d="M18 7a7 7 0 0 1 0 10"/>',
+      bat: '<rect x="3" y="7.5" width="16" height="9" rx="2"/><path d="M21 11v2"/>',
+    };
+    const pop = $('pop');
+    let current = null, volume = 0, dragging = false, lastSent = 0;
+
+    // La hauteur du contenu (px CSS = px logiques) part au C# : le verre suit.
+    const report = () => send('height:' + Math.ceil(pop.getBoundingClientRect().height));
+    new ResizeObserver(report).observe(pop);
+
+    function render(m) {
+      current = m.type;
+      if (m.type === 'net') {
+        const label = m.kind === 'wifi' ? (m.name || 'Wi-Fi') : m.kind === 'ethernet' ? 'Ethernet' : 'Hors ligne';
+        const sub = m.kind === 'wifi' ? `Wi-Fi · signal ${m.signal} %` : m.kind === 'ethernet' ? 'Connexion filaire' : 'Aucune connexion';
+        pop.innerHTML = `
+          <div class="head">${svg(ICON[m.kind] || ICON.none)}<div class="title">${esc(label)}</div></div>
+          <div class="sub">${sub}</div>
+          <div class="toggles">
+            <div class="toggle${m.wifi ? ' on' : ''}" data-t="wifi"${m.wifi == null ? ' hidden' : ''}>${svg(ICON.wifi)}<span class="n">Wi-Fi</span></div>
+            <div class="toggle${m.bluetooth ? ' on' : ''}" data-t="bluetooth"${m.bluetooth == null ? ' hidden' : ''}>${svg(ICON.bluetooth)}<span class="n">Bluetooth</span></div>
+          </div>`;
+        if (m.wifi == null && m.bluetooth == null) pop.querySelector('.toggles').remove();
+      } else if (m.type === 'snd') {
+        if (!dragging) volume = m.volume ?? 0;
+        const muted = m.muted || m.volume == null;
+        if (pop.dataset.kind === 'snd' && pop.querySelector('.slider')) {   // simple mise à jour : le geste continue
+          drawVolume(muted);
+          renderOutputs(m.outputs);
+        } else {
+          pop.innerHTML = `
+            <div class="head">${svg(muted ? ICON.off : ICON.high)}<div class="title">Son</div></div>
+            <div class="slider" id="vol"><div class="ibtn" id="mute" title="Couper / rétablir">${svg(muted ? ICON.off : ICON.high)}</div>
+              <div class="track" id="track"><div class="fill" id="fill"></div></div><span class="val" id="vval"></span></div>
+            <div class="label">Sortie</div>
+            <div class="list" id="outputs"></div>`;
+          wireVolume();
+          drawVolume(muted);
+          renderOutputs(m.outputs);
+        }
+      } else if (m.type === 'bat') {
+        const p = m.percent;
+        pop.innerHTML = p == null
+          ? `<div class="head">${svg(ICON.bat)}<div class="title">Pas de batterie</div></div>`
+          : `<div class="head">${svg(ICON.bat)}<div class="title">Batterie</div></div>
+             <div class="big">${p}<span class="sub"> %</span></div>
+             <div class="meter${!m.charging && p <= 10 ? ' critical' : !m.charging && p <= 20 ? ' low' : ''}"><div class="fill" style="width:${p}%"></div></div>
+             <div class="sub">${m.charging ? 'En charge' : 'Sur batterie'}</div>`;
+      } else if (m.type === 'app') {
+        pop.innerHTML = `
+          <div class="head">${m.icon ? `<img src="${m.icon}" alt="">` : ''}<div class="title" title="${esc(m.title)}">${esc(m.title)}</div></div>
+          <div class="thumb" id="thumb" style="height:${m.thumb}px" title="Aller à cette fenêtre"></div>`;
+        $('thumb').addEventListener('click', () => send('activate'));
+      }
+      pop.dataset.kind = m.type;
+      report();
+    }
+
+    function drawVolume(muted) {
+      const s = $('vol');
+      if (!s) return;
+      s.classList.toggle('muted', !!muted);
+      $('fill').style.width = volume + '%';
+      $('vval').textContent = muted ? '—' : volume;
+      $('mute').innerHTML = svg(muted ? ICON.off : ICON.high);
+    }
+    function wireVolume() {
+      const track = $('track');
+      const at = e => { const r = track.getBoundingClientRect(); return Math.round(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * 100); };
+      const apply = (v, force) => {
+        volume = v; drawVolume(false);
+        const now = performance.now();
+        if (force || now - lastSent > 40) { lastSent = now; send('volume:' + v); }
+      };
+      track.addEventListener('pointerdown', e => { dragging = true; track.setPointerCapture(e.pointerId); apply(at(e), true); });
+      track.addEventListener('pointermove', e => { if (dragging) apply(at(e)); });
+      track.addEventListener('pointerup', e => { if (dragging) { apply(at(e), true); dragging = false; } });
+      $('vol').addEventListener('wheel', e => { e.preventDefault(); apply(Math.max(0, Math.min(100, volume + (e.deltaY < 0 ? 5 : -5))), true); }, { passive: false });
+      $('mute').addEventListener('click', () => send('mute'));
+      $('outputs').addEventListener('click', e => { const it = e.target.closest('.item'); if (it && !it.classList.contains('on')) send('output:' + it.dataset.id); });
+    }
+    function renderOutputs(list) {
+      const el = $('outputs');
+      if (!el) return;
+      el.innerHTML = (list || []).map(o =>
+        { const i = o.name.indexOf(' ('), main = i > 0 ? o.name.slice(0, i) : o.name, dev = i > 0 ? o.name.slice(i + 2).replace(/\)$/, '') : '';
+          return `<div class="item${o.active ? ' on' : ''}" data-id="${esc(o.id)}" title="${esc(o.name)}"><div class="dot"></div><div class="names"><span>${esc(main)}</span>${dev ? `<small>${esc(dev)}</small>` : ''}</div></div>`; }).join('')
+        || '<div class="sub">Aucune sortie audio</div>';
+    }
+
+    pop.addEventListener('click', e => {
+      const t = e.target.closest('.toggle');
+      if (t) { t.classList.toggle('on'); send('toggle:' + t.dataset.t); }
+    });
+
+    view?.addEventListener('message', e => { if (e.data?.type) render(e.data); });
+    send('ready');
+  </script>
+</body>
+</html>

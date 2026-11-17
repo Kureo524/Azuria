@@ -118,7 +118,7 @@ internal class GlassWindow : Form
     public virtual DrawerEdge Edge => DrawerEdge.None;
 
     /// <summary>Côtés collés au cadre (fondus) : un tiroir latéral pleine hauteur touche aussi le haut et le bas.</summary>
-    public DrawerSides AttachedSides => Edge switch
+    public virtual DrawerSides AttachedSides => Edge switch
     {
         DrawerEdge.Top => DrawerSides.Top,
         DrawerEdge.Bottom => DrawerSides.Bottom,
@@ -148,6 +148,12 @@ internal class GlassWindow : Form
 
     public bool IsShown => _shownState;
 
+    /// <summary>Autre zone où le curseur garde le tiroir ouvert (ex. le popout sorti de la barre).</summary>
+    public Func<Point, bool>? KeepAlso { get; set; }
+
+    /// <summary>Le tiroir est en train de glisser (ouverture ou fermeture).</summary>
+    public bool IsAnimating => _animating;
+
     /// <summary>Zone de travail de l'écran d'ancrage : intérieur du cadre, hors barre des tâches.</summary>
     protected Rectangle WorkArea => Monitors.WorkArea(AnchorScreen);
 
@@ -165,13 +171,19 @@ internal class GlassWindow : Form
         _triggerZone = triggerZone;
         _keepZone = keepZone;
         _geometryReady = true;
-        if (!_animating)
-        {
-            Bounds = _shownState ? shown : hidden;
-            // Au repos caché : fenêtre réellement invisible (ne déborde sur aucun autre écran).
-            Visible = _shownState;
-            Track();
-        }
+        if (_animating) { _geometryPending = true; return; } // appliquée à la fin du glissé
+        ApplyGeometry();
+    }
+
+    private bool _geometryPending;
+
+    private void ApplyGeometry()
+    {
+        _geometryPending = false;
+        Bounds = _shownState ? _shown : _hidden;
+        // Au repos caché : fenêtre réellement invisible (ne déborde sur aucun autre écran).
+        Visible = _shownState;
+        Track();
     }
 
     /// <summary>Forme du verre pour la taille actuelle (coordonnées de la fenêtre).</summary>
@@ -367,7 +379,7 @@ internal class GlassWindow : Form
             return;
         }
         Rectangle hot = _shownState ? _keepZone : _triggerZone;
-        bool want = hot.Contains(cursor);
+        bool want = hot.Contains(cursor) || (_shownState && KeepAlso?.Invoke(cursor) == true);
         // Bouton gauche enfoncé (une fenêtre qu'on glisse, une sélection) : un tiroir fermé ne sort pas.
         if (want && !_shownState && GetAsyncKeyState(0x01 /* VK_LBUTTON */) < 0) return;
         if (want != _shownState)
@@ -425,7 +437,11 @@ internal class GlassWindow : Form
             Track();
             if (!shown) PresenceChanged?.Invoke(this, false);
         }
-        finally { _animating = false; }
+        finally
+        {
+            _animating = false;
+            if (_geometryPending && !IsDisposed && IsHandleCreated) ApplyGeometry(); // taille ou place changée en route
+        }
 
         if (shown && !NoActivate)
         {

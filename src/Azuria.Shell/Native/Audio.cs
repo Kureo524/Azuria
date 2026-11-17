@@ -22,6 +22,107 @@ internal static class Audio
     {
         [PreserveSig] int Activate(ref Guid iid, int clsCtx, nint activationParams,
             [MarshalAs(UnmanagedType.IUnknown)] out object iface);
+        [PreserveSig] int OpenPropertyStore(int access, out IPropertyStore store);
+        [PreserveSig] int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id);
+    }
+
+    [ComImport, Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IMMDeviceCollection
+    {
+        [PreserveSig] int GetCount(out uint count);
+        [PreserveSig] int Item(uint index, out IMMDevice device);
+    }
+
+    [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPropertyStore
+    {
+        [PreserveSig] int GetCount(out uint count);
+        [PreserveSig] int GetAt(uint index, out PropertyKey key);
+        [PreserveSig] int GetValue(ref PropertyKey key, out PropVariant value);
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private struct PropertyKey { public Guid Fmtid; public uint Pid; }
+    [StructLayout(LayoutKind.Explicit)] private struct PropVariant { [FieldOffset(0)] public ushort Vt; [FieldOffset(8)] public nint Ptr; [FieldOffset(16)] public nint Pad; }
+    [DllImport("ole32.dll")] private static extern int PropVariantClear(ref PropVariant v);
+
+    // Choix de la sortie par défaut : l'interface IPolicyConfig des réglages du son de Windows. Elle
+    // n'est pas documentée mais stable depuis Windows 7 (le mélangeur EarTrumpet s'en sert) ; l'appel
+    // reste dans notre processus et passe par le service audio de Windows.
+    [ComImport, Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9")] private class PolicyConfigClient { }
+    [ComImport, Guid("F8679F50-850A-41CF-9C72-430F290290C8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPolicyConfig
+    {
+        [PreserveSig] int GetMixFormat(nint a, nint b);
+        [PreserveSig] int GetDeviceFormat(nint a, int b, nint c);
+        [PreserveSig] int ResetDeviceFormat(nint a);
+        [PreserveSig] int SetDeviceFormat(nint a, nint b, nint c);
+        [PreserveSig] int GetProcessingPeriod(nint a, int b, nint c, nint d);
+        [PreserveSig] int SetProcessingPeriod(nint a, nint b);
+        [PreserveSig] int GetShareMode(nint a, nint b);
+        [PreserveSig] int SetShareMode(nint a, nint b);
+        [PreserveSig] int GetPropertyValue(nint a, nint b, nint c);
+        [PreserveSig] int SetPropertyValue(nint a, nint b, nint c);
+        [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string id, int role);
+    }
+
+    private const int DEVICE_STATE_ACTIVE = 1, eMultimedia = 1, eCommunications = 2;
+    private static PropertyKey FriendlyName = new()
+    { Fmtid = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), Pid = 14 };
+
+    /// <summary>Sorties audio actives : identifiant, nom, et si c'est la sortie par défaut.</summary>
+    public static List<(string Id, string Name, bool Default)> Outputs()
+    {
+        var list = new List<(string, string, bool)>();
+        object? enumerator = null;
+        try
+        {
+            enumerator = new MMDeviceEnumerator();
+            var e = (IMMDeviceEnumerator)enumerator;
+            string? def = null;
+            if (e.GetDefaultAudioEndpoint(eRender, eConsole, out var d) == 0) { d.GetId(out def); Marshal.ReleaseComObject(d); }
+            if (e.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, out nint pc) != 0 || pc == 0) return list;
+            var coll = (IMMDeviceCollection)Marshal.GetObjectForIUnknown(pc);
+            Marshal.Release(pc);
+            coll.GetCount(out uint n);
+            for (uint i = 0; i < n; i++)
+            {
+                if (coll.Item(i, out var dev) != 0) continue;
+                try
+                {
+                    dev.GetId(out string id);
+                    string name = id;
+                    if (dev.OpenPropertyStore(0 /* STGM_READ */, out var store) == 0)
+                    {
+                        if (store.GetValue(ref FriendlyName, out var v) == 0)
+                        {
+                            if (v.Vt == 31 /* VT_LPWSTR */) name = Marshal.PtrToStringUni(v.Ptr) ?? id;
+                            PropVariantClear(ref v);
+                        }
+                        Marshal.ReleaseComObject(store);
+                    }
+                    list.Add((id, name, id == def));
+                }
+                finally { Marshal.ReleaseComObject(dev); }
+            }
+            Marshal.ReleaseComObject(coll);
+        }
+        catch { }
+        finally { if (enumerator is not null) Marshal.ReleaseComObject(enumerator); }
+        return list;
+    }
+
+    /// <summary>Fait de cette sortie la sortie par défaut (tous rôles, comme les réglages du son).</summary>
+    public static void SetDefaultOutput(string id)
+    {
+        object? policy = null;
+        try
+        {
+            policy = new PolicyConfigClient();
+            var p = (IPolicyConfig)policy;
+            foreach (int role in new[] { eConsole, eMultimedia, eCommunications }) p.SetDefaultEndpoint(id, role);
+        }
+        catch { }
+        finally { if (policy is not null) Marshal.ReleaseComObject(policy); }
     }
 
     [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
