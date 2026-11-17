@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 32 196 196">
+  <!-- Marque d'Azuria pour la barre : le « A » au pinceau de l'icône (assets/azuria.svg), sans fond. -->
+  <path fill="#e6eaf2" d="M48 208 C64 160 98 94 121 45 C126 36 138 37 138 47 C125 98 103 160 89 207
+    C86 216 74 221 63 220 C54 219 46 215 48 208 Z"/>
+  <path fill="#e6eaf2" d="M129 50 C130 40 143 39 146 48 C162 98 182 152 203 191
+    C208 200 207 211 198 213 C189 215 181 206 177 196 C161 152 143 104 129 50 Z"/>
+  <path fill="#8fa4cc" d="M68 157 C100 144 152 136 197 133 C205 133 207 140 200 143
+    C157 148 108 157 81 166 C71 169 62 160 68 157 Z"/>
+  <circle cx="213" cy="130" r="5.5" fill="#8fa4cc"/>
+  <circle cx="226" cy="123" r="2.8" fill="#8fa4cc"/>
+</svg>

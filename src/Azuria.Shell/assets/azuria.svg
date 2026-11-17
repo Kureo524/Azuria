@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Icône d'Azuria : un « A » tracé au pinceau, effet encre (DA « Encre »). Dessin original. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1d27"/>
+      <stop offset="1" stop-color="#0b0c11"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f1f4fa"/>
+      <stop offset="1" stop-color="#c3cbdd"/>
+    </linearGradient>
+    <!-- Bords irréguliers du pinceau -->
+    <filter id="rough" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="11"/>
+      <feDisplacementMap in="SourceGraphic" scale="5" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <!-- L'encre qui bave dans le papier -->
+    <filter id="bleed" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <!-- Les trois traits du A, réutilisés pour le halo et les stries -->
+    <path id="left" d="M48 208 C64 160 98 94 121 45 C126 36 138 37 138 47 C125 98 103 160 89 207
+      C86 216 74 221 63 220 C54 219 46 215 48 208 Z"/>
+    <path id="right" d="M129 50 C130 40 143 39 146 48 C162 98 182 152 203 191
+      C208 200 207 211 198 213 C189 215 181 206 177 196 C161 152 143 104 129 50 Z"/>
+    <path id="bar" d="M68 157 C100 144 152 136 197 133 C205 133 207 140 200 143
+      C157 148 108 157 81 166 C71 169 62 160 68 157 Z"/>
+    <clipPath id="legs"><use href="#left"/><use href="#right"/></clipPath>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <rect x="9" y="9" width="238" height="238" rx="55" fill="none" stroke="#e6eaf2" stroke-opacity="0.15" stroke-width="2"/>
+
+  <!-- Halo d'encre derrière les traits -->
+  <g filter="url(#bleed)" opacity="0.35">
+    <use href="#left" fill="#8fa4cc"/>
+    <use href="#right" fill="#8fa4cc"/>
+    <use href="#bar" fill="#8fa4cc"/>
+  </g>
+
+  <g filter="url(#rough)">
+    <use href="#left" fill="url(#ink)"/>
+    <use href="#right" fill="url(#ink)"/>
+    <!-- Stries de pinceau sec, dans le sens des jambes -->
+    <g clip-path="url(#legs)" stroke="#10121a" stroke-linecap="round" fill="none" opacity="0.3">
+      <path d="M58 214 C74 166 104 104 126 52" stroke-width="1.6"/>
+      <path d="M72 216 C86 168 112 106 131 54" stroke-width="1.1"/>
+      <path d="M80 212 C93 166 116 108 134 60" stroke-width="0.9"/>
+      <path d="M188 208 C170 160 150 108 138 62" stroke-width="1.2"/>
+      <path d="M196 204 C176 156 156 104 142 58" stroke-width="0.8"/>
+    </g>
+    <!-- Barre : balayage à l'encre d'accent, qui déborde à droite -->
+    <use href="#bar" fill="#8fa4cc"/>
+  </g>
+
+  <!-- Gouttes projetées -->
+  <circle cx="213" cy="130" r="5.5" fill="#8fa4cc"/>
+  <circle cx="226" cy="123" r="2.8" fill="#8fa4cc"/>
+  <circle cx="221" cy="139" r="1.8" fill="#8fa4cc" opacity="0.8"/>
+  <circle cx="44" cy="222" r="2.4" fill="#e6eaf2" opacity="0.6"/>
+</svg>
