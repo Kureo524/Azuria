@@ -268,6 +268,9 @@ internal class GlassWindow : Form
     {
         base.OnShown(e);
         LayoutGeometry();
+        // Pas encore de place connue (popout jamais survolé…) : la fenêtre resterait affichée à 0,0
+        // avec sa taille par défaut. Elle reste cachée jusqu'à sa première géométrie.
+        if (!_geometryReady) Visible = false;
         _settle.Start(); // re-calcule quelques fois le temps que tout se stabilise
     }
 
