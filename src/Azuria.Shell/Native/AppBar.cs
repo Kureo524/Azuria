@@ -43,12 +43,14 @@ internal static class AppBar
     {
         var d = New(hwnd);
         d.uCallbackMessage = CallbackMessage;
+        using var _ = TrayHost.StepAside();
         SHAppBarMessage(ABM_NEW, ref d);
     }
 
     public static void Unregister(nint hwnd)
     {
         var d = New(hwnd);
+        using var _ = TrayHost.StepAside();
         SHAppBarMessage(ABM_REMOVE, ref d);
     }
 
@@ -63,6 +65,7 @@ internal static class AppBar
         d.uEdge = EdgeCode(edge);
         d.rc = new RECT { Left = monitor.Left, Top = monitor.Top, Right = monitor.Right, Bottom = monitor.Bottom };
         Clamp(ref d.rc, edge, thickness);
+        using var _ = TrayHost.StepAside();
         SHAppBarMessage(ABM_QUERYPOS, ref d);
         Clamp(ref d.rc, edge, thickness); // Windows a pu déplacer le bord intérieur : on rétablit l'épaisseur
         SHAppBarMessage(ABM_SETPOS, ref d);

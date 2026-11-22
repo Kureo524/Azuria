@@ -25,8 +25,29 @@ internal static class Monitors
     /// <summary>Taille logique (px à 100 %) → pixels physiques pour cet écran.</summary>
     public static int Scale(Screen s, int logical) => (int)Math.Round(logical * Dpi(s) / 96.0);
 
-    /// <summary>Zone de travail actuelle (hors barre des tâches et hors cadre d'Azuria).</summary>
+    /// <summary>
+    /// Zone de travail actuelle (hors barre des tâches et hors cadre d'Azuria). Toujours bornée à
+    /// l'intérieur du cadre : si Windows a perdu une réservation, le cadre, les tiroirs et le pavage
+    /// restent quand même dans l'écran.
+    /// </summary>
     public static Rectangle WorkArea(Screen s)
+    {
+        var inner = InsideFrame(s);
+        return Rectangle.Intersect(RawWorkArea(s), inner) is { Width: > 0, Height: > 0 } r ? r : inner;
+    }
+
+    /// <summary>Vrai si Windows applique bien les bandes réservées du cadre sur cet écran.</summary>
+    public static bool FrameReserved(Screen s) => InsideFrame(s).Contains(RawWorkArea(s));
+
+    // L'écran moins l'épaisseur du cadre sur chaque bord.
+    private static Rectangle InsideFrame(Screen s)
+    {
+        int t = Scale(s, ShellMetrics.Frame);
+        return Rectangle.Inflate(s.Bounds, -t, -t);
+    }
+
+    // Zone de travail telle que Windows la donne.
+    private static Rectangle RawWorkArea(Screen s)
     {
         var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
         if (!GetMonitorInfo(Handle(s.Bounds), ref mi)) return s.WorkingArea;

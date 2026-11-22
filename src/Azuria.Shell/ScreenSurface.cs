@@ -51,7 +51,18 @@ internal sealed class ScreenSurface : IDisposable
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reserve(); Layout(); };
         // Windows applique la nouvelle zone de travail un peu après nos réservations : on se recale.
         _relayout.Tick += (_, _) => { _relayout.Stop(); Layout(); };
+        // Filet de sécurité : si Windows n'applique pas (ou plus) nos bandes, on les refait. Sans lui,
+        // une réservation perdue le restait jusqu'au prochain changement d'écran (voir TrayHost.StepAside).
+        _watch.Tick += (_, _) =>
+        {
+            if (_fullScreen || _debounce.Enabled || Monitors.FrameReserved(Screen)) return;
+            Reserve();
+            _relayout.Stop();
+            _relayout.Start();
+        };
     }
+
+    private readonly System.Windows.Forms.Timer _watch = new() { Interval = 1000 };
 
     public void Start()
     {
@@ -62,6 +73,7 @@ internal sealed class ScreenSurface : IDisposable
         _frame = _glass.AddLayer(new Rectangle(Point.Empty, Screen.Bounds.Size), GlassSurface.FrameTint);
         Layout();
         _window.Show();
+        _watch.Start();
     }
 
     /// <summary>Réserve les quatre bandes auprès de Windows (la zone de travail rétrécit d'autant).</summary>
@@ -195,6 +207,7 @@ internal sealed class ScreenSurface : IDisposable
 
     public void Dispose()
     {
+        _watch.Dispose();
         _debounce.Dispose();
         _relayout.Dispose();
         ReleaseReservation();

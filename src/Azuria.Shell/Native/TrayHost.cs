@@ -50,7 +50,7 @@ internal sealed class TrayHost : IDisposable
     private const uint WM_COPYDATA = 0x004A, WM_COMMAND = 0x0111, WM_USER = 0x0400;
     private const uint SMTO_ABORTIFHUNG = 0x2;
     private const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10;
-    private static readonly nint HWND_TOPMOST = -1, HWND_BROADCAST = 0xFFFF;
+    private static readonly nint HWND_TOPMOST = -1, HWND_NOTOPMOST = -2, HWND_BOTTOM = 1, HWND_BROADCAST = 0xFFFF;
     private const int WS_EX_TOOLWINDOW = 0x80, WS_EX_TOPMOST = 0x8;
     private const uint WS_POPUP = 0x80000000;
 
@@ -92,6 +92,7 @@ internal sealed class TrayHost : IDisposable
         _hwnd = CreateWindowEx(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, TrayClass, "", WS_POPUP,
                                r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top, 0, 0, c.hInstance, 0);
         if (_hwnd == 0) return;
+        _current = _hwnd;
         BeFirst();
         Broadcast();
         // L'Explorateur repasse parfois sa fenêtre devant la nôtre (il est relancé, ou la recrée) :
@@ -154,6 +155,30 @@ internal sealed class TrayHost : IDisposable
     private static nint FirstTray() => FindWindow(TrayClass, null);
 
     private void BeFirst() => SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+    private static nint _current; // notre fenêtre « Shell_TrayWnd », s'il y en a une
+
+    /// <summary>
+    /// Les barres d'application d'Azuria passent par <c>SHAppBarMessage</c>, qui écrit à la première
+    /// fenêtre « Shell_TrayWnd » : la nôtre. Relayés depuis notre propre processus, ces messages sont
+    /// acceptés mais Windows ne déduit jamais les bandes de la zone de travail (constaté sur deux
+    /// écrans : aucun bord réservé). Le temps de l'appel, notre fenêtre passe donc derrière celle de
+    /// l'Explorateur, qui reçoit le message directement ; elle reprend sa place juste après.
+    /// </summary>
+    public static IDisposable StepAside()
+    {
+        nint h = _current;
+        if (h == 0 || !IsWindow(h)) return Restorer.None;
+        SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        SetWindowPos(h, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        return new Restorer(() => SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE));
+    }
+
+    private sealed class Restorer(Action? done) : IDisposable
+    {
+        public static readonly Restorer None = new(null);
+        public void Dispose() => done?.Invoke();
+    }
 
     // « La barre des tâches vient d'être créée » : chaque appli renvoie ses icônes (vers nous).
     private void Broadcast() => PostMessage(HWND_BROADCAST, _taskbarCreated, 0, 0);
@@ -278,6 +303,7 @@ internal sealed class TrayHost : IDisposable
         // icônes (tout lui a été transmis).
         if (_hwnd != 0) DestroyWindow(_hwnd);
         _hwnd = 0;
+        _current = 0;
         UnregisterClass(TrayClass, GetModuleHandle(null));
     }
 }
