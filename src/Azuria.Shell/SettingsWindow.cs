@@ -75,6 +75,10 @@ internal sealed class SettingsWindow : GlassWindow
             case "startup": Settings.LaunchAtStartup = p.ElementAtOrDefault(1) == "1"; return;
             case "tiling": Settings.Update(s => s.Tiling = p.ElementAtOrDefault(1) == "1"); return;
             case "focus": Settings.Update(s => s.FocusFollowsMouse = p.ElementAtOrDefault(1) == "1"); return;
+            case "terminal":
+                Native.Terminal.SetDefault(p.ElementAtOrDefault(1) == "1");
+                Send(); // l'interrupteur montre ce que Windows Terminal a réellement
+                return;
         }
     }
 
@@ -89,6 +93,7 @@ internal sealed class SettingsWindow : GlassWindow
             startup = Settings.LaunchAtStartup,
             tiling = s.Tiling,
             focus = s.FocusFollowsMouse,
+            terminal = Native.Terminal.IsDefault,
             version = Application.ProductVersion.Split('+')[0],
         }));
     }

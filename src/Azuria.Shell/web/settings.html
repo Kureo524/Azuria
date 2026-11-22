@@ -125,6 +125,13 @@
           </div>
           <div class="switch" id="sw-focus"></div>
         </div>
+        <div class="row" data-k="terminal">
+          <div class="txt">
+            <div class="name">Terminal d'Azuria par défaut</div>
+            <div class="help">Windows Terminal s'ouvre sur le profil Azuria (verre, accueil, prompt). Coupé, il reprend votre profil d'avant.</div>
+          </div>
+          <div class="switch" id="sw-terminal"></div>
+        </div>
       </section>
 
       <section data-s="start">
@@ -184,7 +191,7 @@
       $('swatches').innerHTML = m.accents.map(a =>
         `<div class="swatch${a.id === m.accent ? ' chosen' : ''}" data-id="${a.id}" title="${a.name}" style="background:${a.hex}"></div>`).join('');
       $('accent-name').textContent = (m.accents.find(a => a.id === m.accent) || m.accents[0]).name;
-      for (const k of ['tiling', 'focus', 'startup']) $('sw-' + k).classList.toggle('on', !!m[k]);
+      for (const k of ['tiling', 'focus', 'startup', 'terminal']) $('sw-' + k).classList.toggle('on', !!m[k]);
       $('ver').textContent = 'v' + m.version;
       $('ver2').textContent = 'Version ' + m.version;
     }
