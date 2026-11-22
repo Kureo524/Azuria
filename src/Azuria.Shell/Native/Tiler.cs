@@ -101,6 +101,9 @@ internal sealed class Tiler : IDisposable
     private readonly Dictionary<uint, bool> _gamePid = new();
     private readonly System.Windows.Forms.Timer _debounce = new() { Interval = 80 };
     private readonly System.Windows.Forms.Timer _settle = new() { Interval = 600 };
+    private readonly System.Windows.Forms.Timer _fit = new() { Interval = 300 };
+    private readonly Dictionary<nint, Size> _floor = new();      // taille minimale imposée par l'appli
+    private bool _fitting;   // passe de vérification en cours
     private readonly System.Windows.Forms.Timer _hover = new() { Interval = 50 };
     private nint _hovered;   // fenêtre sous le curseur au tour précédent
     private POINT _lastCursor;
@@ -118,6 +121,8 @@ internal sealed class Tiler : IDisposable
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reconcile(); };
         // Beaucoup d'applis se replacent elles-mêmes juste après s'être affichées : seconde passe.
         _settle.Tick += (_, _) => { _settle.Stop(); Apply(); _fresh.Clear(); };
+        // Après un pavage : une appli qui a refusé sa place (largeur minimale…) est ramenée dans l'écran.
+        _fit.Tick += (_, _) => { _fit.Stop(); _fitting = true; Apply(); _fitting = false; };
         _hover.Tick += (_, _) => FollowMouse();
     }
 
@@ -232,6 +237,7 @@ internal sealed class Tiler : IDisposable
         _order.Remove(h);
         _screenOf.Remove(h);
         _tiles.Remove(h);
+        _floor.Remove(h);
         _fresh.Remove(h);
     }
 
@@ -275,11 +281,27 @@ internal sealed class Tiler : IDisposable
                 var h = windows[k];
                 if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
                 _tiles[h] = rects[k];
-                var from = Visible(h);
-                if (from is Rectangle f && f != rects[k]) moves.Add((h, f, rects[k]));
+                if (Visible(h) is not Rectangle f) continue;
+                // Passe de vérification : plus grande que sa place, l'appli impose sa taille minimale.
+                if (_fitting && (f.Width > rects[k].Width || f.Height > rects[k].Height))
+                    _floor[h] = new Size(Math.Max(f.Width, _floor.GetValueOrDefault(h).Width),
+                                         Math.Max(f.Height, _floor.GetValueOrDefault(h).Height));
+                var to = _floor.TryGetValue(h, out var min) ? Fit(rects[k], min, area) : rects[k];
+                if (f != to) moves.Add((h, f, to));
             }
         }
         if (moves.Count > 0) Animate(moves);
+    }
+
+    // L'appli refuse d'être plus petite que <paramref name="min"/> : elle garde cette taille, décalée
+    // pour rester dans la zone de travail (quitte à chevaucher sa voisine), plutôt que de sortir de l'écran.
+    private static Rectangle Fit(Rectangle tile, Size min, Rectangle area)
+    {
+        int w = Math.Max(tile.Width, Math.Min(min.Width, area.Width));
+        int h = Math.Max(tile.Height, Math.Min(min.Height, area.Height));
+        int x = Math.Clamp(tile.X, area.Left, area.Right - w);
+        int y = Math.Clamp(tile.Y, area.Top, area.Bottom - h);
+        return new Rectangle(x, y, w, h);
     }
 
     /// <summary>
@@ -301,6 +323,7 @@ internal sealed class Tiler : IDisposable
             if (gen != _generation || _disposed) return; // remplacé par un pavage plus récent
         }
         foreach (var (h, _, t) in moves) Place(h, t);
+        if (!_fitting && !_disposed) { _fit.Stop(); _fit.Start(); } // chacune a-t-elle accepté sa place ?
     }
 
     // Rectangle visible de la fenêtre (sans la bordure invisible de Windows 11).
@@ -502,6 +525,7 @@ internal sealed class Tiler : IDisposable
         _hooks.Clear();
         _debounce.Dispose();
         _settle.Dispose();
+        _fit.Dispose();
         _hover.Dispose();
     }
 }
