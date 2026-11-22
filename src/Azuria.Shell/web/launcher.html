@@ -150,6 +150,10 @@
       { id: 'cmd:wallpaper', kind: 'cmd', name: 'wallpaper', sub: "Change le fond d'écran · Images\\Wallpaper",
         glyph: glyph('<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M3.5 16l5-4.5 4 3.5 3-2.5 5 4"/><circle cx="15.5" cy="9.5" r="1.5"/>'),
         list: wallpaperList },
+      // Commande d'action : pas de liste, Entrée l'exécute (le C# ouvre Windows Terminal, profil Azuria).
+      { id: 'cmd:terminal', kind: 'cmd', name: 'terminal', sub: "Ouvre le terminal d'Azuria · Win+T",
+        glyph: glyph('<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M7.5 9.5l3 2.5-3 2.5M12.5 15h4"/>'),
+        run: 'terminal' },
     ].map(c => ({ ...c, key: c.name }));
 
     function wallpaperList() {
@@ -166,6 +170,7 @@
       if (!raw.startsWith('>')) return { items: apps, term: norm(raw.trim()), empty: 'Aucun résultat' };
       const m = raw.slice(1).match(/^\s*(\S*)\s*(.*)$/s);
       const name = norm(m[1]), cmd = commands.find(c => c.key === name);
+      if (cmd?.run) return { items: [cmd], term: '', empty: '' };
       if (cmd) return { term: norm(m[2].trim()), ...cmd.list() };
       return { items: commands, term: name, empty: 'Aucune commande' };
     }
@@ -356,7 +361,8 @@
     function launch(i) {
       const a = shown[i];
       if (!a) return;
-      if (a.kind === 'cmd') complete(a);
+      if (a.kind === 'cmd' && a.run) view?.postMessage(a.run);
+      else if (a.kind === 'cmd') complete(a);
       else if (a.kind === 'wall') {
         cancelPreview(false);
         view?.postMessage('wallpaper:' + a.path);

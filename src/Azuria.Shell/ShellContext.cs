@@ -104,12 +104,21 @@ internal sealed class ShellContext : ApplicationContext
         launcher.MessageReceived += msg =>
         {
             if (msg == "apps") SendCatalog(launcher);                  // la page est prête
+            else if (msg == "terminal")                                // commande >terminal
+            {
+                launcher.Conceal();
+                Terminal.Open();
+            }
             else if (msg.StartsWith("launch:"))
             {
                 if (_catalog.Launch(msg[7..])) launcher.Conceal();
             }
         };
         _catalog.Refresh(TimeSpan.Zero);
+
+        // Le terminal d'Azuria (profil Windows Terminal) : posé au démarrage, recoloré avec l'accent.
+        _ = Terminal.InstallAsync();
+        Settings.Changed += OnSettingsChangedForTerminal;
 
         foreach (var w in new GlassWindow[] { bar, dashboard, sidebar, launcher, settings, _popout.Window, session, osd })
         {
@@ -123,6 +132,7 @@ internal sealed class ShellContext : ApplicationContext
         // La touche Windows ouvre le lanceur au lieu du menu Démarrer (crochet retiré pendant un jeu).
         _startKey = new StartKey();
         _startKey.Pressed += () => { if (!GlassWindow.Suspended) launcher.Toggle(Cursor.Position); };
+        _startKey.TerminalPressed += () => { if (!GlassWindow.Suspended) Terminal.Open(); };
         _startKey.Enabled = true;
 
         // Les fenêtres d'applis se pavent dans la zone de travail (en pause pendant un jeu).
@@ -134,6 +144,14 @@ internal sealed class ShellContext : ApplicationContext
     }
 
     private bool _down;
+    private string _terminalAccent = Settings.Current.AccentHex;
+
+    private void OnSettingsChangedForTerminal()
+    {
+        if (Settings.Current.AccentHex == _terminalAccent) return;
+        _terminalAccent = Settings.Current.AccentHex;
+        _ = Terminal.InstallAsync();
+    }
 
     /// <summary>
     /// Quitte Azuria proprement, quelle que soit la demande (fenêtre fermée, <c>taskkill</c>, fin de
@@ -143,6 +161,7 @@ internal sealed class ShellContext : ApplicationContext
     {
         if (_down) return;
         _down = true;
+        Settings.Changed -= OnSettingsChangedForTerminal;
         _fullScreenWatch.Stop();
         _startKey?.Dispose();
         _tiler.Dispose();
