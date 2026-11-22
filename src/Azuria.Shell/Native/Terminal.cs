@@ -37,7 +37,91 @@ internal static class Terminal
     private static readonly string Script = Path.Combine(DataDir, "azuria.ps1");
     private static readonly string Infos = Path.Combine(DataDir, "infos.json");
 
+    private static readonly string OfferedFile = Path.Combine(DataDir, "par-defaut-propose.txt");
+    private static readonly string OriginalFile = Path.Combine(DataDir, "profil-d-origine.txt");
+    private const string WindowsPowerShellGuid = "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}";
+
     private static Dictionary<string, string>? _static; // processeur, carte graphique… (lu une fois)
+
+    // ----- terminal par défaut -----
+
+    private static readonly System.Text.RegularExpressions.Regex DefaultProfileRx =
+        new("\"defaultProfile\"\\s*:\\s*\"([^\"]*)\"");
+
+    /// <summary>
+    /// Vrai si le profil Azuria est celui par défaut de Windows Terminal : c'est lui qui s'ouvre au
+    /// lancement de Windows Terminal, avec « Ouvrir dans le Terminal » et pour un nouvel onglet.
+    /// </summary>
+    public static bool IsDefault
+    {
+        get
+        {
+            try
+            {
+                var path = SettingsFiles().FirstOrDefault(File.Exists);
+                if (path is null) return false;
+                var m = DefaultProfileRx.Match(File.ReadAllText(path));
+                return m.Success && string.Equals(m.Groups[1].Value, ProfileGuid, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+    }
+
+    /// <summary>
+    /// Fait du profil Azuria celui par défaut (en gardant l'ancien de côté), ou rend l'ancien. Seule
+    /// la valeur « defaultProfile » change dans les réglages de Windows Terminal : le reste du fichier
+    /// (mise en forme, commentaires) est laissé tel quel. Renvoie vrai si le fichier a été écrit.
+    /// </summary>
+    public static bool SetDefault(bool azuria)
+    {
+        bool wrote = false;
+        foreach (var path in SettingsFiles().Where(File.Exists))
+        {
+            try
+            {
+                string text = File.ReadAllText(path);
+                var m = DefaultProfileRx.Match(text);
+                string current = m.Success ? m.Groups[1].Value : "";
+                bool isOurs = string.Equals(current, ProfileGuid, StringComparison.OrdinalIgnoreCase);
+                string target;
+                if (azuria)
+                {
+                    if (isOurs) continue;
+                    Directory.CreateDirectory(DataDir);
+                    if (current.Length > 0) File.WriteAllText(OriginalFile, current);
+                    target = ProfileGuid;
+                }
+                else
+                {
+                    if (!isOurs) continue;
+                    target = File.Exists(OriginalFile) ? File.ReadAllText(OriginalFile).Trim() : WindowsPowerShellGuid;
+                    if (target.Length == 0) target = WindowsPowerShellGuid;
+                }
+                text = m.Success
+                    ? text[..m.Groups[1].Index] + target + text[(m.Groups[1].Index + m.Groups[1].Length)..]
+                    : InsertDefault(text, target);
+                File.WriteAllText(path, text, new UTF8Encoding(false));
+                wrote = true;
+            }
+            catch { /* fichier verrouillé ou illisible : Windows Terminal garde son réglage */ }
+        }
+        return wrote;
+    }
+
+    // Pas de « defaultProfile » dans le fichier : on l'ajoute juste après l'accolade d'ouverture.
+    private static string InsertDefault(string text, string guid)
+    {
+        int i = text.IndexOf('{');
+        return i < 0 ? text : text[..(i + 1)] + $"\n    \"defaultProfile\": \"{guid}\"," + text[(i + 1)..];
+    }
+
+    private static IEnumerable<string> SettingsFiles()
+    {
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        yield return Path.Combine(local, "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.json");
+        yield return Path.Combine(local, "Packages", "Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe", "LocalState", "settings.json");
+        yield return Path.Combine(local, "Microsoft", "Windows Terminal", "settings.json"); // version non empaquetée
+    }
 
     /// <summary>
     /// Pose (ou met à jour) le profil, le script et les infos. À appeler au démarrage et quand
@@ -57,8 +141,15 @@ internal static class Terminal
                 string source = Path.Combine(AppContext.BaseDirectory, "terminal", "azuria.ps1");
                 WriteIfChanged(Script, File.ReadAllText(source), new UTF8Encoding(true));
                 WriteIfChanged(Infos, InfosJson(accent), new UTF8Encoding(false));
-                if (WriteIfChanged(Path.Combine(FragmentDir, "azuria.json"), FragmentJson(accent), new UTF8Encoding(false)))
-                    NudgeTerminal();
+                bool changed = WriteIfChanged(Path.Combine(FragmentDir, "azuria.json"), FragmentJson(accent), new UTF8Encoding(false));
+                // Première installation : le terminal d'Azuria devient celui par défaut (une seule fois :
+                // si l'utilisateur le retire ensuite, on ne le remet pas de force).
+                if (!File.Exists(OfferedFile))
+                {
+                    File.WriteAllText(OfferedFile, DateTime.Now.ToString("o"));
+                    if (SetDefault(true)) changed = false; // l'écriture des réglages les recharge déjà
+                }
+                if (changed) NudgeTerminal();
             });
         }
         catch { /* disque, droits : le terminal reste celui de Windows, rien d'autre ne casse */ }
@@ -226,13 +317,7 @@ internal static class Terminal
     private static void NudgeTerminal()
     {
         if (Process.GetProcessesByName("WindowsTerminal").Length == 0) return; // il lira au démarrage
-        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        foreach (var path in new[]
-        {
-            Path.Combine(local, "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.json"),
-            Path.Combine(local, "Packages", "Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe", "LocalState", "settings.json"),
-            Path.Combine(local, "Microsoft", "Windows Terminal", "settings.json"), // version non empaquetée
-        })
+        foreach (var path in SettingsFiles())
         {
             try { if (File.Exists(path)) File.SetLastWriteTime(path, DateTime.Now); } catch { }
         }
