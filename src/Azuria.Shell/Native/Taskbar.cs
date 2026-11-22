@@ -77,6 +77,7 @@ internal sealed class Taskbar : IDisposable
         var d = New();
         d.hWnd = TrayHost.ExplorerTray();
         d.lParam = state;
+        using var _ = TrayHost.StepAside(); // directement à l'Explorateur (voir TrayHost.StepAside)
         SHAppBarMessage(ABM_SETSTATE, ref d);
     }
 
