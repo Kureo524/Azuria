@@ -57,7 +57,8 @@ internal static class Terminal
                 string source = Path.Combine(AppContext.BaseDirectory, "terminal", "azuria.ps1");
                 WriteIfChanged(Script, File.ReadAllText(source), new UTF8Encoding(true));
                 WriteIfChanged(Infos, InfosJson(accent), new UTF8Encoding(false));
-                WriteIfChanged(Path.Combine(FragmentDir, "azuria.json"), FragmentJson(accent), new UTF8Encoding(false));
+                if (WriteIfChanged(Path.Combine(FragmentDir, "azuria.json"), FragmentJson(accent), new UTF8Encoding(false)))
+                    NudgeTerminal();
             });
         }
         catch { /* disque, droits : le terminal reste celui de Windows, rien d'autre ne casse */ }
@@ -208,11 +209,33 @@ internal static class Terminal
 
     // ----- outils -----
 
-    private static void WriteIfChanged(string path, string content, Encoding enc)
+    private static bool WriteIfChanged(string path, string content, Encoding enc)
     {
         // Réécrire à l'identique ferait recharger Windows Terminal pour rien.
-        try { if (File.Exists(path) && File.ReadAllText(path) == content) return; } catch { }
+        try { if (File.Exists(path) && File.ReadAllText(path) == content) return false; } catch { }
         File.WriteAllText(path, content, enc);
+        return true;
+    }
+
+    /// <summary>
+    /// Windows Terminal ne lit les fragments qu'en chargeant ses réglages : au démarrage, ou quand son
+    /// fichier de réglages change. S'il tourne déjà (toutes ses fenêtres partagent un processus), un
+    /// profil posé après coup reste inconnu et <c>wt -p Azuria</c> ouvre le profil par défaut. On
+    /// change donc la date du fichier, sans toucher à son contenu : il recharge, et voit le profil.
+    /// </summary>
+    private static void NudgeTerminal()
+    {
+        if (Process.GetProcessesByName("WindowsTerminal").Length == 0) return; // il lira au démarrage
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        foreach (var path in new[]
+        {
+            Path.Combine(local, "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.json"),
+            Path.Combine(local, "Packages", "Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe", "LocalState", "settings.json"),
+            Path.Combine(local, "Microsoft", "Windows Terminal", "settings.json"), // version non empaquetée
+        })
+        {
+            try { if (File.Exists(path)) File.SetLastWriteTime(path, DateTime.Now); } catch { }
+        }
     }
 
     // Éclaircit une couleur #RRGGBB de `amount` (0–1) en luminosité HSL, plafonnée à 90 % (DA §3).
