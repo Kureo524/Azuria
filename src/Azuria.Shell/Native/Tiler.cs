@@ -121,7 +121,8 @@ internal sealed class Tiler : IDisposable
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reconcile(); };
         // Beaucoup d'applis se replacent elles-mêmes juste après s'être affichées : seconde passe.
         _settle.Tick += (_, _) => { _settle.Stop(); Apply(); _fresh.Clear(); };
-        // Après un pavage : une appli qui a refusé sa place (largeur minimale…) est ramenée dans l'écran.
+        // Après un pavage : une appli qui a refusé sa place (largeur minimale…) obtient sa taille, et les
+        // autres se partagent le reste.
         _fit.Tick += (_, _) => { _fit.Stop(); _fitting = true; Apply(); _fitting = false; };
         _hover.Tick += (_, _) => FollowMouse();
     }
@@ -275,17 +276,22 @@ internal sealed class Tiler : IDisposable
             if (windows.Count == 0) continue;
             int outer = Monitors.Scale(screen, OuterGap), inner = Monitors.Scale(screen, InnerGap);
             var area = Rectangle.Inflate(Monitors.WorkArea(screen), -outer, -outer);
-            var rects = Dwindle(area, windows.Count, inner);
+            // Passe de vérification : plus grande que sa place, l'appli impose sa taille minimale. On la
+            // retient, et le partage de l'écran en tient compte (la voisine cède la place).
+            if (_fitting)
+                foreach (var h in windows)
+                    if (_tiles.TryGetValue(h, out var given) && Visible(h) is Rectangle seen
+                        && (seen.Width > given.Width || seen.Height > given.Height))
+                        _floor[h] = new Size(Math.Max(seen.Width, _floor.GetValueOrDefault(h).Width),
+                                             Math.Max(seen.Height, _floor.GetValueOrDefault(h).Height));
+            var rects = Dwindle(area, windows.Select(h => _floor.GetValueOrDefault(h)).ToList(), inner);
             for (int k = 0; k < windows.Count; k++)
             {
                 var h = windows[k];
                 if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
                 _tiles[h] = rects[k];
                 if (Visible(h) is not Rectangle f) continue;
-                // Passe de vérification : plus grande que sa place, l'appli impose sa taille minimale.
-                if (_fitting && (f.Width > rects[k].Width || f.Height > rects[k].Height))
-                    _floor[h] = new Size(Math.Max(f.Width, _floor.GetValueOrDefault(h).Width),
-                                         Math.Max(f.Height, _floor.GetValueOrDefault(h).Height));
+                // Filet : deux minimums qui ne tiennent pas ensemble. L'appli garde sa taille, ramenée dans l'écran.
                 var to = _floor.TryGetValue(h, out var min) ? Fit(rects[k], min, area) : rects[k];
                 if (f != to) moves.Add((h, f, to));
             }
@@ -334,28 +340,46 @@ internal sealed class Tiler : IDisposable
         return GetWindowRect(h, out var wr) ? Rectangle.FromLTRB(wr.Left, wr.Top, wr.Right, wr.Bottom) : null;
     }
 
-    /// <summary>Chaque fenêtre prend la moitié de la place restante, coupée dans le sens le plus long.</summary>
-    private static List<Rectangle> Dwindle(Rectangle area, int n, int gap)
+    /// <summary>
+    /// Chaque fenêtre prend la moitié de la place restante, coupée dans le sens le plus long. Une appli
+    /// qui a une taille minimale (<paramref name="floors"/>, vide si aucune) obtient au moins celle-ci,
+    /// prise sur la part des suivantes, tant que leurs propres minimums le permettent.
+    /// </summary>
+    private static List<Rectangle> Dwindle(Rectangle area, IReadOnlyList<Size> floors, int gap)
     {
+        int n = floors.Count;
         var result = new List<Rectangle>(n);
         var r = area;
         for (int i = 0; i < n; i++)
         {
             if (i == n - 1) { result.Add(r); break; }
+            var rest = floors.Skip(i + 1).ToList();
             if (r.Width >= r.Height)
             {
-                int w = (r.Width - gap) / 2;
+                int w = Share(r.Width, gap, floors[i].Width, rest.Max(f => f.Width));
                 result.Add(new Rectangle(r.X, r.Y, w, r.Height));
                 r = new Rectangle(r.X + w + gap, r.Y, r.Width - w - gap, r.Height);
             }
             else
             {
-                int hh = (r.Height - gap) / 2;
+                int hh = Share(r.Height, gap, floors[i].Height, rest.Max(f => f.Height));
                 result.Add(new Rectangle(r.X, r.Y, r.Width, hh));
                 r = new Rectangle(r.X, r.Y + hh + gap, r.Width, r.Height - hh - gap);
             }
         }
         return result;
+    }
+
+    // Part de la première fenêtre sur une longueur coupée en deux : la moitié, agrandie jusqu'à son
+    // minimum, réduite si les suivantes ont besoin de plus. Les deux minimums ne tiennent pas ensemble :
+    // la première garde le sien.
+    private static int Share(int length, int gap, int first, int rest)
+    {
+        int room = length - gap;
+        int x = Math.Min(Math.Max(room / 2, first), room - rest);
+        x = Math.Max(x, Math.Min(first, room));
+        // Jamais moins d'un quart pour personne : au-delà, Fit fait chevaucher plutôt qu'écraser.
+        return Math.Clamp(x, room / 4, room - room / 4);
     }
 
     // Place la partie visible de la fenêtre sur le rectangle : Windows 11 entoure les fenêtres d'une
