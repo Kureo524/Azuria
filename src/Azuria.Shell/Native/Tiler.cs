@@ -121,9 +121,27 @@ internal sealed class Tiler : IDisposable
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reconcile(); };
         // Beaucoup d'applis se replacent elles-mêmes juste après s'être affichées : seconde passe.
         _settle.Tick += (_, _) => { _settle.Stop(); Apply(); _fresh.Clear(); };
-        // Après un pavage : une appli qui a refusé sa place (largeur minimale…) est ramenée dans l'écran.
+        // Après un pavage : une appli qui a refusé sa place (largeur minimale…) obtient sa taille, et les
+        // autres se partagent le reste.
         _fit.Tick += (_, _) => { _fit.Stop(); _fitting = true; Apply(); _fitting = false; };
-        _hover.Tick += (_, _) => FollowMouse();
+        _hover.Tick += (_, _) => { FollowMouse(); WatchFullScreen(); };
+    }
+
+    // Fenêtres pavées actuellement en plein écran. Entrer ou sortir du plein écran (vidéo) ne déclenche
+    // aucun des évènements suivis : on le surveille, toutes les 250 ms.
+    private readonly HashSet<nint> _full = new();
+    private int _fullTick;
+
+    private void WatchFullScreen()
+    {
+        if (++_fullTick % 5 != 0 || _suspended || !Settings.Current.Tiling) return;
+        bool changed = false;
+        foreach (var h in _order)
+        {
+            bool full = IsWindow(h) && IsFullScreen(h);
+            changed |= full ? _full.Add(h) : _full.Remove(h);
+        }
+        if (changed) Schedule();
     }
 
     public void Start()
@@ -239,12 +257,14 @@ internal sealed class Tiler : IDisposable
         _tiles.Remove(h);
         _floor.Remove(h);
         _fresh.Remove(h);
+        _full.Remove(h);
+        _standIns.Release(h);
     }
 
     // Fenêtres pavées sur un écran (même règle que le placement).
     private List<nint> TiledOn(string screen) =>
         _order.Where(h => _screenOf.TryGetValue(h, out var s) && s == screen
-                          && Tileable(h, allowZoomed: _fresh.Contains(h))).ToList();
+                          && Tileable(h, allowZoomed: _fresh.Contains(h), allowFull: true)).ToList();
 
     // Vrai si la fenêtre partage son écran avec au moins une autre fenêtre pavée.
     private bool Shared(nint h) => _screenOf.TryGetValue(h, out var s) && TiledOn(s).Any(o => o != h);
@@ -275,21 +295,34 @@ internal sealed class Tiler : IDisposable
             if (windows.Count == 0) continue;
             int outer = Monitors.Scale(screen, OuterGap), inner = Monitors.Scale(screen, InnerGap);
             var area = Rectangle.Inflate(Monitors.WorkArea(screen), -outer, -outer);
-            var rects = Dwindle(area, windows.Count, inner);
+            // Passe de vérification : plus grande que sa place, l'appli impose sa taille minimale. On la
+            // retient, et le partage de l'écran en tient compte (la voisine cède la place).
+            if (_fitting)
+                foreach (var h in windows)
+                    if (!_standIns.Holds(h) && !IsFullScreen(h) && _tiles.TryGetValue(h, out var given) && Visible(h) is Rectangle seen
+                        && (seen.Width > given.Width || seen.Height > given.Height))
+                        _floor[h] = new Size(Math.Max(seen.Width, _floor.GetValueOrDefault(h).Width),
+                                             Math.Max(seen.Height, _floor.GetValueOrDefault(h).Height));
+            var rects = Dwindle(area, windows.Select(h => _floor.GetValueOrDefault(h)).ToList(), inner);
             for (int k = 0; k < windows.Count; k++)
             {
                 var h = windows[k];
-                if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
                 _tiles[h] = rects[k];
-                if (Visible(h) is not Rectangle f) continue;
-                // Passe de vérification : plus grande que sa place, l'appli impose sa taille minimale.
-                if (_fitting && (f.Width > rects[k].Width || f.Height > rects[k].Height))
-                    _floor[h] = new Size(Math.Max(f.Width, _floor.GetValueOrDefault(h).Width),
-                                         Math.Max(f.Height, _floor.GetValueOrDefault(h).Height));
+                // En plein écran : sa case lui reste, mais on ne la déplace pas (elle y revient seule).
+                if (IsFullScreen(h)) { _full.Add(h); continue; }
+                _full.Remove(h);
+                Round(h);
+                if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
+                // En pleine animation, la fenêtre est là où sa doublure la montre (la vraie attend peut-être hors de l'écran).
+                if ((_standIns.Shown(h) ?? Visible(h)) is not Rectangle f) continue;
+                // Filet : deux minimums qui ne tiennent pas ensemble. L'appli garde sa taille, ramenée dans l'écran.
                 var to = _floor.TryGetValue(h, out var min) ? Fit(rects[k], min, area) : rects[k];
-                if (f != to) moves.Add((h, f, to));
+                if (f != to || _standIns.Holds(h)) moves.Add((h, f, to));
             }
         }
+        // Doublure d'une fenêtre qui n'est plus pavée (réduite, agrandie à la main…) : la vraie se montre.
+        foreach (var h in _order.Where(_standIns.Holds).ToList())
+            if (!moves.Any(m => m.H == h)) _standIns.Release(h);
         if (moves.Count > 0) Animate(moves);
     }
 
@@ -307,23 +340,75 @@ internal sealed class Tiler : IDisposable
     /// <summary>
     /// Les fenêtres glissent vers leur nouvelle place (DA §11 : 0,22 s, décélération), toutes en même
     /// temps, cadencées par DWM. Un nouveau pavage en cours de route reprend depuis la position atteinte.
+    ///
+    /// Ce sont leurs doublures qui bougent (<see cref="StandIns"/>) : une miniature DWM, étirée par le
+    /// compositeur, donc fluide quelle que soit l'appli. La vraie fenêtre ne change de taille qu'une
+    /// fois, toujours cachée sous sa doublure : à la fin si elle grandit, dès le début si elle
+    /// rétrécit. Elle ne quitte jamais l'écran : un navigateur (Chromium) mis hors de l'écran se
+    /// croit caché et cesse d'afficher sa page. Ni l'un ni l'autre (elle se déplace), ou doublure
+    /// refusée par DWM : la fenêtre s'anime elle-même, comme avant.
     /// </summary>
     private async void Animate(List<(nint H, Rectangle From, Rectangle To)> moves)
     {
         int gen = ++_generation;
+        var doubled = new HashSet<nint>();
+        foreach (var (h, f, t) in moves)
+        {
+            bool grows = t.Contains(f), shrinks = f.Contains(t);
+            var screen = Screen.AllScreens.FirstOrDefault(s => _screenOf.TryGetValue(h, out var n) && s.DeviceName == n)
+                         ?? Screen.FromHandle(h);
+            if (!(grows || shrinks) || !_standIns.Hold(h, screen, f)) { _standIns.Release(h); continue; }
+            doubled.Add(h);
+            // Elle rétrécit : chaque étape de la doublure contient la place finale, qui reste couverte.
+            if (!grows) Place(h, t);
+        }
+
         const double dur = 220;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (sw.Elapsed.TotalMilliseconds < dur)
         {
             double e = Easing.In(sw.Elapsed.TotalMilliseconds / dur);
             foreach (var (h, f, t) in moves)
-                Place(h, Rectangle.FromLTRB(Easing.Lerp(f.Left, t.Left, e), Easing.Lerp(f.Top, t.Top, e),
-                                            Easing.Lerp(f.Right, t.Right, e), Easing.Lerp(f.Bottom, t.Bottom, e)));
+            {
+                var r = Rectangle.FromLTRB(Easing.Lerp(f.Left, t.Left, e), Easing.Lerp(f.Top, t.Top, e),
+                                           Easing.Lerp(f.Right, t.Right, e), Easing.Lerp(f.Bottom, t.Bottom, e));
+                if (doubled.Contains(h)) _standIns.Show(h, r);
+                else Place(h, r);
+            }
             await Task.Run(Dwm.Flush);
-            if (gen != _generation || _disposed) return; // remplacé par un pavage plus récent
+            if (gen != _generation || _disposed) return; // remplacé par un pavage plus récent (il reprend les doublures)
         }
-        foreach (var (h, _, t) in moves) Place(h, t);
+        foreach (var (h, _, t) in moves)
+        {
+            if (doubled.Contains(h)) _standIns.Show(h, t);
+            Place(h, t);
+        }
+        // La vraie fenêtre est à sa place : on lui laisse quelques images pour se redessiner à sa
+        // nouvelle taille, sous sa doublure, avant de la montrer.
+        for (int i = 0; i < 4 && doubled.Count > 0; i++)
+        {
+            await Task.Run(Dwm.Flush);
+            if (gen != _generation || _disposed) return;
+        }
+        foreach (var h in doubled) _standIns.Release(h);
         if (!_fitting && !_disposed) { _fit.Stop(); _fit.Start(); } // chacune a-t-elle accepté sa place ?
+    }
+
+    private readonly StandIns _standIns = new();
+
+    private const uint DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    private const int DWMWCP_DEFAULT = 0, DWMWCP_ROUND = 2;
+    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] private static extern int DwmGetWindowInt(nint h, uint attr, out int value, int size);
+    [DllImport("dwmapi.dll", EntryPoint = "DwmSetWindowAttribute")] private static extern int DwmSetWindowInt(nint h, uint attr, ref int value, int size);
+
+    // Coins ronds pour une fenêtre pavée qui laisse Windows choisir (Opera…) : sans demande explicite,
+    // Windows 11 les rend parfois carrés (après un plein écran, par exemple). Préférence de DWM, comme
+    // la couleur du contour : rien n'est injecté. Une appli qui a choisi ses coins garde son choix.
+    private static void Round(nint h)
+    {
+        if (DwmGetWindowInt(h, DWMWA_WINDOW_CORNER_PREFERENCE, out int pref, sizeof(int)) != 0 || pref != DWMWCP_DEFAULT) return;
+        int round = DWMWCP_ROUND;
+        DwmSetWindowInt(h, DWMWA_WINDOW_CORNER_PREFERENCE, ref round, sizeof(int));
     }
 
     // Rectangle visible de la fenêtre (sans la bordure invisible de Windows 11).
@@ -334,28 +419,46 @@ internal sealed class Tiler : IDisposable
         return GetWindowRect(h, out var wr) ? Rectangle.FromLTRB(wr.Left, wr.Top, wr.Right, wr.Bottom) : null;
     }
 
-    /// <summary>Chaque fenêtre prend la moitié de la place restante, coupée dans le sens le plus long.</summary>
-    private static List<Rectangle> Dwindle(Rectangle area, int n, int gap)
+    /// <summary>
+    /// Chaque fenêtre prend la moitié de la place restante, coupée dans le sens le plus long. Une appli
+    /// qui a une taille minimale (<paramref name="floors"/>, vide si aucune) obtient au moins celle-ci,
+    /// prise sur la part des suivantes, tant que leurs propres minimums le permettent.
+    /// </summary>
+    private static List<Rectangle> Dwindle(Rectangle area, IReadOnlyList<Size> floors, int gap)
     {
+        int n = floors.Count;
         var result = new List<Rectangle>(n);
         var r = area;
         for (int i = 0; i < n; i++)
         {
             if (i == n - 1) { result.Add(r); break; }
+            var rest = floors.Skip(i + 1).ToList();
             if (r.Width >= r.Height)
             {
-                int w = (r.Width - gap) / 2;
+                int w = Share(r.Width, gap, floors[i].Width, rest.Max(f => f.Width));
                 result.Add(new Rectangle(r.X, r.Y, w, r.Height));
                 r = new Rectangle(r.X + w + gap, r.Y, r.Width - w - gap, r.Height);
             }
             else
             {
-                int hh = (r.Height - gap) / 2;
+                int hh = Share(r.Height, gap, floors[i].Height, rest.Max(f => f.Height));
                 result.Add(new Rectangle(r.X, r.Y, r.Width, hh));
                 r = new Rectangle(r.X, r.Y + hh + gap, r.Width, r.Height - hh - gap);
             }
         }
         return result;
+    }
+
+    // Part de la première fenêtre sur une longueur coupée en deux : la moitié, agrandie jusqu'à son
+    // minimum, réduite si les suivantes ont besoin de plus. Les deux minimums ne tiennent pas ensemble :
+    // la première garde le sien.
+    private static int Share(int length, int gap, int first, int rest)
+    {
+        int room = length - gap;
+        int x = Math.Min(Math.Max(room / 2, first), room - rest);
+        x = Math.Max(x, Math.Min(first, room));
+        // Jamais moins d'un quart pour personne : au-delà, Fit fait chevaucher plutôt qu'écraser.
+        return Math.Clamp(x, room / 4, room - room / 4);
     }
 
     // Place la partie visible de la fenêtre sur le rectangle : Windows 11 entoure les fenêtres d'une
@@ -476,7 +579,16 @@ internal sealed class Tiler : IDisposable
 
     // ----- règles -----
 
-    private bool Tileable(nint h, bool allowZoomed)
+    // Vrai si la fenêtre couvre tout son écran (vidéo, jeu, navigateur en plein écran).
+    private static bool IsFullScreen(nint h) =>
+        GetWindowRect(h, out var wr) && Rectangle.FromLTRB(wr.Left, wr.Top, wr.Right, wr.Bottom).Contains(Screen.FromHandle(h).Bounds);
+
+    // Une fenêtre déjà pavée qui passe en plein écran (vidéo YouTube…) garde sa place : sa voisine ne
+    // s'agrandit pas, et à la sortie du plein écran la fenêtre retrouve sa case. Une fenêtre qui
+    // arrive en plein écran (un jeu) n'entre jamais dans le pavage.
+    private bool Tileable(nint h, bool allowZoomed) => Tileable(h, allowZoomed, allowFull: false);
+
+    private bool Tileable(nint h, bool allowZoomed, bool allowFull)
     {
         if (!IsWindow(h) || !OpenWindows.IsAppWindow(h) || IsIconic(h)) return false;
         if (IsZoomed(h) && !allowZoomed) return false;
@@ -486,7 +598,7 @@ internal sealed class Tiler : IDisposable
         if (GetWindow(h, GW_OWNER) != 0) return false;
         if (!GetWindowRect(h, out var wr)) return false;
         var rect = Rectangle.FromLTRB(wr.Left, wr.Top, wr.Right, wr.Bottom);
-        if (rect.Contains(Screen.FromHandle(h).Bounds)) return false; // plein écran : un jeu, une vidéo
+        if (!allowFull && rect.Contains(Screen.FromHandle(h).Bounds)) return false; // plein écran : un jeu, une vidéo
         return !IsGame(h);
     }
 
@@ -518,6 +630,7 @@ internal sealed class Tiler : IDisposable
     public void Dispose()
     {
         _disposed = true;
+        _standIns.Dispose();
         Settings.Changed -= OnSettingsChanged;
         Focus(0);
         if (_snapWasOn) SystemParametersSet(SPI_SETWINARRANGING, 1, 0, SPIF_SENDCHANGE);
