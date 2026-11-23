@@ -46,8 +46,18 @@ internal sealed class Taskbar : IDisposable
             File.WriteAllText(StateFile, _originalState.ToString());
         }
         Hide();
-        // Explorateur relancé (la barre est recréée) : on la recache.
-        _watcher = new ExplorerWatcher(RegisterWindowMessage("TaskbarCreated"), Hide);
+        // Explorateur relancé (la barre est recréée) : on la recache. « TaskbarCreated » est aussi
+        // diffusé par Azuria lui-même (TrayHost, pour que les applis renvoient leurs icônes) : la barre
+        // n'a alors pas changé, et la recacher ferait passer notre zone de notification derrière celle
+        // de l'Explorateur au moment précis où les icônes arrivent (elles seraient perdues).
+        nint bar = TrayHost.ExplorerTray();
+        _watcher = new ExplorerWatcher(RegisterWindowMessage("TaskbarCreated"), () =>
+        {
+            nint now = TrayHost.ExplorerTray();
+            if (now == bar) return;
+            bar = now;
+            Hide();
+        });
         // Windows réaffiche parfois la barre (menu Démarrer, notifications) : on la recache.
         _keepHidden.Tick += (_, _) => { foreach (var h in Bars()) if (IsWindowVisible(h)) ShowWindow(h, SW_HIDE); };
         _keepHidden.Start();
