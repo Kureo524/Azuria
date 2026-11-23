@@ -99,13 +99,6 @@ internal sealed class TrayHost : IDisposable
         // démarrage, les barres d'Azuria réservent leurs bords (StepAside : notre fenêtre passe un
         // instant derrière celle de l'Explorateur) : l'annonce attend qu'elles aient fini.
         AnnounceSoon();
-        _announce.Tick += (_, _) =>
-        {
-            _announce.Stop();
-            if (FirstTray() != _hwnd) BeFirst();
-            Broadcast();
-            _announcedAt = Environment.TickCount64;
-        };
         // L'Explorateur repasse parfois sa fenêtre devant la nôtre (il est relancé, ou la recrée) :
         // on reprend la place, et les applis renvoient leurs icônes.
         _keepFirst.Tick += (_, _) =>
@@ -173,16 +166,31 @@ internal sealed class TrayHost : IDisposable
 
     // Annonce « TaskbarCreated » différée : 1,5 s après le dernier écart (StepAside), et pas plus
     // d'une fois toutes les 10 s, pour ne pas faire renvoyer leurs icônes aux applis en boucle.
-    private readonly System.Windows.Forms.Timer _announce = new() { Interval = 1500 };
+    // Minuteur Windows posé sur notre fenêtre (WM_TIMER dans Proc) : la demande passe par un message
+    // posté, donc elle marche depuis n'importe quel fil (un minuteur WinForms démarré hors du fil de
+    // l'interface ne se déclenche jamais).
+    private const uint WM_TIMER = 0x0113, WM_ANNOUNCE = 0x8000 + 0x34; // WM_APP + n : jamais relayé
+    private const nint AnnounceTimer = 1;
     private long _announcedAt = -10_000;
-    private readonly SynchronizationContext? _ui = SynchronizationContext.Current;
 
-    private void AnnounceSoon()
+    [DllImport("user32.dll")] private static extern nuint SetTimer(nint h, nint id, uint ms, nint proc);
+    [DllImport("user32.dll")] private static extern bool KillTimer(nint h, nint id);
+
+    private void AnnounceSoon() { if (_hwnd != 0) PostMessage(_hwnd, WM_ANNOUNCE, 0, 0); }
+
+    // Sur le fil de notre fenêtre : (re)lance le minuteur.
+    private void ArmAnnounce()
     {
-        int wait = (int)Math.Max(1500, 10_000 - (Environment.TickCount64 - _announcedAt));
-        _announce.Stop();
-        _announce.Interval = wait;
-        _announce.Start();
+        uint wait = (uint)Math.Max(1500, 10_000 - (Environment.TickCount64 - _announcedAt));
+        SetTimer(_hwnd, AnnounceTimer, wait, 0);
+    }
+
+    private void Announce()
+    {
+        KillTimer(_hwnd, AnnounceTimer);
+        if (FirstTray() != _hwnd) BeFirst();
+        Broadcast();
+        _announcedAt = Environment.TickCount64;
     }
 
     /// <summary>
@@ -202,11 +210,7 @@ internal sealed class TrayHost : IDisposable
         {
             SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             // Une icône posée pendant l'écart est partie chez l'Explorateur : on redemande à tous.
-            if (_self is { } t)
-            {
-                if (t._ui is { } ui) ui.Post(_ => { if (t._hwnd != 0) t.AnnounceSoon(); }, null);
-                else t.AnnounceSoon();
-            }
+            _self?.AnnounceSoon();
         });
     }
 
@@ -223,6 +227,8 @@ internal sealed class TrayHost : IDisposable
     {
         try
         {
+            if (msg == WM_ANNOUNCE) { ArmAnnounce(); return 0; }
+            if (msg == WM_TIMER && w == AnnounceTimer) { Announce(); return 0; }
             if (msg == WM_COPYDATA)
             {
                 var cds = Marshal.PtrToStructure<COPYDATASTRUCT>(l);
@@ -367,7 +373,6 @@ internal sealed class TrayHost : IDisposable
     {
         _keepFirst.Dispose();
         _sweep.Dispose();
-        _announce.Dispose();
         _self = null;
         // Sans notre fenêtre, les applis retrouvent celle de l'Explorateur, qui a déjà toutes leurs
         // icônes (tout lui a été transmis).
