@@ -124,7 +124,24 @@ internal sealed class Tiler : IDisposable
         // Après un pavage : une appli qui a refusé sa place (largeur minimale…) obtient sa taille, et les
         // autres se partagent le reste.
         _fit.Tick += (_, _) => { _fit.Stop(); _fitting = true; Apply(); _fitting = false; };
-        _hover.Tick += (_, _) => FollowMouse();
+        _hover.Tick += (_, _) => { FollowMouse(); WatchFullScreen(); };
+    }
+
+    // Fenêtres pavées actuellement en plein écran. Entrer ou sortir du plein écran (vidéo) ne déclenche
+    // aucun des évènements suivis : on le surveille, toutes les 250 ms.
+    private readonly HashSet<nint> _full = new();
+    private int _fullTick;
+
+    private void WatchFullScreen()
+    {
+        if (++_fullTick % 5 != 0 || _suspended || !Settings.Current.Tiling) return;
+        bool changed = false;
+        foreach (var h in _order)
+        {
+            bool full = IsWindow(h) && IsFullScreen(h);
+            changed |= full ? _full.Add(h) : _full.Remove(h);
+        }
+        if (changed) Schedule();
     }
 
     public void Start()
@@ -241,13 +258,14 @@ internal sealed class Tiler : IDisposable
         _floor.Remove(h);
         _fresh.Remove(h);
         _parked.Remove(h);
+        _full.Remove(h);
         _standIns.Release(h);
     }
 
     // Fenêtres pavées sur un écran (même règle que le placement).
     private List<nint> TiledOn(string screen) =>
         _order.Where(h => _screenOf.TryGetValue(h, out var s) && s == screen
-                          && Tileable(h, allowZoomed: _fresh.Contains(h))).ToList();
+                          && Tileable(h, allowZoomed: _fresh.Contains(h), allowFull: true)).ToList();
 
     // Vrai si la fenêtre partage son écran avec au moins une autre fenêtre pavée.
     private bool Shared(nint h) => _screenOf.TryGetValue(h, out var s) && TiledOn(s).Any(o => o != h);
@@ -282,7 +300,7 @@ internal sealed class Tiler : IDisposable
             // retient, et le partage de l'écran en tient compte (la voisine cède la place).
             if (_fitting)
                 foreach (var h in windows)
-                    if (!_standIns.Holds(h) && _tiles.TryGetValue(h, out var given) && Visible(h) is Rectangle seen
+                    if (!_standIns.Holds(h) && !IsFullScreen(h) && _tiles.TryGetValue(h, out var given) && Visible(h) is Rectangle seen
                         && (seen.Width > given.Width || seen.Height > given.Height))
                         _floor[h] = new Size(Math.Max(seen.Width, _floor.GetValueOrDefault(h).Width),
                                              Math.Max(seen.Height, _floor.GetValueOrDefault(h).Height));
@@ -290,8 +308,11 @@ internal sealed class Tiler : IDisposable
             for (int k = 0; k < windows.Count; k++)
             {
                 var h = windows[k];
-                if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
                 _tiles[h] = rects[k];
+                // En plein écran : sa case lui reste, mais on ne la déplace pas (elle y revient seule).
+                if (IsFullScreen(h)) { _full.Add(h); continue; }
+                _full.Remove(h);
+                if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
                 // En pleine animation, la fenêtre est là où sa doublure la montre (la vraie attend peut-être hors de l'écran).
                 if ((_standIns.Shown(h) ?? Visible(h)) is not Rectangle f) continue;
                 // Filet : deux minimums qui ne tiennent pas ensemble. L'appli garde sa taille, ramenée dans l'écran.
@@ -569,7 +590,16 @@ internal sealed class Tiler : IDisposable
 
     // ----- règles -----
 
-    private bool Tileable(nint h, bool allowZoomed)
+    // Vrai si la fenêtre couvre tout son écran (vidéo, jeu, navigateur en plein écran).
+    private static bool IsFullScreen(nint h) =>
+        GetWindowRect(h, out var wr) && Rectangle.FromLTRB(wr.Left, wr.Top, wr.Right, wr.Bottom).Contains(Screen.FromHandle(h).Bounds);
+
+    // Une fenêtre déjà pavée qui passe en plein écran (vidéo YouTube…) garde sa place : sa voisine ne
+    // s'agrandit pas, et à la sortie du plein écran la fenêtre retrouve sa case. Une fenêtre qui
+    // arrive en plein écran (un jeu) n'entre jamais dans le pavage.
+    private bool Tileable(nint h, bool allowZoomed) => Tileable(h, allowZoomed, allowFull: false);
+
+    private bool Tileable(nint h, bool allowZoomed, bool allowFull)
     {
         if (!IsWindow(h) || !OpenWindows.IsAppWindow(h) || IsIconic(h)) return false;
         if (IsZoomed(h) && !allowZoomed) return false;
@@ -579,7 +609,7 @@ internal sealed class Tiler : IDisposable
         if (GetWindow(h, GW_OWNER) != 0) return false;
         if (!GetWindowRect(h, out var wr)) return false;
         var rect = Rectangle.FromLTRB(wr.Left, wr.Top, wr.Right, wr.Bottom);
-        if (rect.Contains(Screen.FromHandle(h).Bounds)) return false; // plein écran : un jeu, une vidéo
+        if (!allowFull && rect.Contains(Screen.FromHandle(h).Bounds)) return false; // plein écran : un jeu, une vidéo
         return !IsGame(h);
     }
 
