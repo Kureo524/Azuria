@@ -143,6 +143,25 @@ internal class GlassWindow : Form
     protected virtual void BuildShape(GlassShape s, int w, int h) =>
         s.Body(0, 0, w, h, Scale(ShellMetrics.Fillet), true, true, true, true);
 
+    private Point _drift; // décalage cumulé par ShiftBy (suivi pendant un glissé)
+
+    /// <summary>
+    /// Décale le tiroir avec ce qui le porte (le popout suit la barre qui glisse) : positions cachée et
+    /// révélée, fenêtre et verre, y compris en plein glissé.
+    /// </summary>
+    protected void ShiftBy(int dx, int dy)
+    {
+        if (dx == 0 && dy == 0) return;
+        _drift.Offset(dx, dy);
+        _shown.Offset(dx, dy);
+        _hidden.Offset(dx, dy);
+        _triggerZone.Offset(dx, dy);
+        _keepZone.Offset(dx, dy);
+        if (!IsHandleCreated || !Visible) return;
+        SetWindowPos(Handle, 0, Left + dx, Top + dy, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        Track();
+    }
+
     /// <summary>Vrai si la forme dépend de la position de la fenêtre (recalculée à chaque déplacement).</summary>
     protected virtual bool ShapeFollowsPosition => false;
 
@@ -423,6 +442,7 @@ internal class GlassWindow : Form
             if (shown) PresenceChanged?.Invoke(this, true); // un tiroir latéral libère les coins du cadre
             var from = Bounds;
             var to = shown ? _shown : _hidden;
+            var drift0 = _drift; // un tiroir porté par un autre (popout sur la barre) suit ses déplacements
             double dur = shown ? 200 : 140;   // DA §11 : ouverture ~0,2 s, fermeture 0,14 s
             var sw = Stopwatch.StartNew();
             while (true)
@@ -432,13 +452,15 @@ internal class GlassWindow : Form
                 double p = t / dur;
                 double e = shown ? Easing.In(p)    // entrée : décélération
                                  : Easing.Out(p);  // sortie : accélération
-                SetWindowPos(Handle, 0, Easing.Lerp(from.X, to.X, e), Easing.Lerp(from.Y, to.Y, e), 0, 0,
+                SetWindowPos(Handle, 0, Easing.Lerp(from.X, to.X, e) + _drift.X - drift0.X,
+                    Easing.Lerp(from.Y, to.Y, e) + _drift.Y - drift0.Y, 0, 0,
                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
                 Track();
                 await Task.Run(Dwm.Flush); // la boucle de messages tourne : le verre part avec la page
                 if (IsDisposed || !IsHandleCreated) return;
             }
-            SetWindowPos(Handle, 0, to.X, to.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            SetWindowPos(Handle, 0, to.X + _drift.X - drift0.X, to.Y + _drift.Y - drift0.Y, 0, 0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
             // Une fois rangée, la fenêtre est vraiment masquée.
             if (!shown) Visible = false;
             Track();
