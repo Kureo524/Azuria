@@ -93,8 +93,19 @@ internal sealed class TrayHost : IDisposable
                                r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top, 0, 0, c.hInstance, 0);
         if (_hwnd == 0) return;
         _current = _hwnd;
+        _self = this;
         BeFirst();
-        Broadcast();
+        // Les applis renvoient leurs icônes à la première fenêtre « Shell_TrayWnd » trouvée. Au
+        // démarrage, les barres d'Azuria réservent leurs bords (StepAside : notre fenêtre passe un
+        // instant derrière celle de l'Explorateur) : l'annonce attend qu'elles aient fini.
+        AnnounceSoon();
+        _announce.Tick += (_, _) =>
+        {
+            _announce.Stop();
+            if (FirstTray() != _hwnd) BeFirst();
+            Broadcast();
+            _announcedAt = Environment.TickCount64;
+        };
         // L'Explorateur repasse parfois sa fenêtre devant la nôtre (il est relancé, ou la recrée) :
         // on reprend la place, et les applis renvoient leurs icônes.
         _keepFirst.Tick += (_, _) =>
@@ -125,6 +136,7 @@ internal sealed class TrayHost : IDisposable
         if (e is null || !IsWindow(e.Owner) || e.Callback == 0) return;
         AllowSetForegroundWindow(e.Pid);
         var p = Cursor.Position;
+        _clicked = (e, p, Environment.TickCount64); // l'appli peut demander où est son icône (IconRect)
         void Send(uint m)
         {
             // Version 4 : le message dans le mot bas de lParam, l'identifiant dans le haut, et la
@@ -157,6 +169,21 @@ internal sealed class TrayHost : IDisposable
     private void BeFirst() => SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
     private static nint _current; // notre fenêtre « Shell_TrayWnd », s'il y en a une
+    private static TrayHost? _self;
+
+    // Annonce « TaskbarCreated » différée : 1,5 s après le dernier écart (StepAside), et pas plus
+    // d'une fois toutes les 10 s, pour ne pas faire renvoyer leurs icônes aux applis en boucle.
+    private readonly System.Windows.Forms.Timer _announce = new() { Interval = 1500 };
+    private long _announcedAt = -10_000;
+    private readonly SynchronizationContext? _ui = SynchronizationContext.Current;
+
+    private void AnnounceSoon()
+    {
+        int wait = (int)Math.Max(1500, 10_000 - (Environment.TickCount64 - _announcedAt));
+        _announce.Stop();
+        _announce.Interval = wait;
+        _announce.Start();
+    }
 
     /// <summary>
     /// Les barres d'application d'Azuria passent par <c>SHAppBarMessage</c>, qui écrit à la première
@@ -171,7 +198,16 @@ internal sealed class TrayHost : IDisposable
         if (h == 0 || !IsWindow(h)) return Restorer.None;
         SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         SetWindowPos(h, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        return new Restorer(() => SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE));
+        return new Restorer(() =>
+        {
+            SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            // Une icône posée pendant l'écart est partie chez l'Explorateur : on redemande à tous.
+            if (_self is { } t)
+            {
+                if (t._ui is { } ui) ui.Post(_ => { if (t._hwnd != 0) t.AnnounceSoon(); }, null);
+                else t.AnnounceSoon();
+            }
+        });
     }
 
     private sealed class Restorer(Action? done) : IDisposable
@@ -190,6 +226,7 @@ internal sealed class TrayHost : IDisposable
             if (msg == WM_COPYDATA)
             {
                 var cds = Marshal.PtrToStructure<COPYDATASTRUCT>(l);
+                if (cds.dwData == 3 && IconRect(cds) is nint at) return at;
                 bool ok = cds.dwData == 1 && Read(cds);
                 nint res = Forward(msg, w, l);
                 return cds.dwData == 1 ? (ok ? 1 : res) : res;
@@ -201,6 +238,37 @@ internal sealed class TrayHost : IDisposable
         catch { /* message illisible : on laisse l'Explorateur répondre */ }
         return DefWindowProc(hwnd, msg, w, l);
     }
+
+    // Shell_NotifyIconGetRect : l'appli demande où est son icône, pour y ouvrir son menu ou sa fenêtre.
+    // L'Explorateur répondrait avec sa barre cachée (en bas à droite) : on répond avec l'endroit où
+    // l'icône vient d'être cliquée dans le popout. Pas de clic récent sur cette icône : l'Explorateur répond.
+    // Données : 0 signature · 4 demande (1 = coin haut-gauche, 2 = coin bas-droit) · 8 cbSize ·
+    // 12 réservé · 16 hWnd (32 bits) · 20 uID · 24 guidItem. Réponse : MAKELPARAM(x, y).
+    private nint? IconRect(COPYDATASTRUCT cds)
+    {
+        if (cds.cbData < 40 || Marshal.ReadInt32(cds.lpData) != TraySignature) return null;
+        if (_clicked is not { } c || Environment.TickCount64 - c.At > 10_000) return null;
+        int ask = Marshal.ReadInt32(cds.lpData, 4);
+        nint owner = (nint)Marshal.ReadInt32(cds.lpData, 16);
+        uint id = (uint)Marshal.ReadInt32(cds.lpData, 20);
+        var b = new byte[16];
+        Marshal.Copy(cds.lpData + 24, b, 0, 16);
+        var guid = new Guid(b);
+        bool same = guid != Guid.Empty ? c.Entry.Guid == guid : c.Entry.Owner == owner && c.Entry.Id == id;
+        if (!same) return null;
+        int half = Monitors.Scale(Screen.FromPoint(c.Point), 12); // une icône de 24 px logiques
+        var r = new Rectangle(c.Point.X - half, c.Point.Y - half, 2 * half, 2 * half);
+        return ask switch
+        {
+            1 => MakeLParam(r.Left, r.Top),
+            2 => MakeLParam(r.Right, r.Bottom),
+            _ => null,
+        };
+    }
+
+    private static nint MakeLParam(int lo, int hi) => (nint)(int)((lo & 0xFFFF) | ((hi & 0xFFFF) << 16));
+
+    private (Entry Entry, Point Point, long At)? _clicked; // dernier clic rendu à une appli
 
     private static nint Forward(uint msg, nint w, nint l)
     {
@@ -299,6 +367,8 @@ internal sealed class TrayHost : IDisposable
     {
         _keepFirst.Dispose();
         _sweep.Dispose();
+        _announce.Dispose();
+        _self = null;
         // Sans notre fenêtre, les applis retrouvent celle de l'Explorateur, qui a déjà toutes leurs
         // icônes (tout lui a été transmis).
         if (_hwnd != 0) DestroyWindow(_hwnd);
