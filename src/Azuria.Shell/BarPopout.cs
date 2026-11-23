@@ -38,12 +38,18 @@ internal sealed class PopoutWindow : GlassWindow
     /// <summary>Haut du corps (sous le congé du haut), en pixels écran.</summary>
     public int BodyTop => Top + Scale(ShellMetrics.Fillet);
 
+    // Pendant le glissé, la fenêtre passe en partie derrière la barre, où le verre est rogné (bord de
+    // la zone de travail). La forme suit donc ce bord : les congés restent collés au flanc de la barre
+    // et seul le corps se replie dessous, au lieu de congés rognés qui se décollent du popout.
+    protected override bool ShapeFollowsPosition => true;
+
     protected override void BuildShape(GlassShape s, int w, int h)
     {
         int f = Scale(ShellMetrics.Fillet);
-        s.Body(0, f, w, h - 2 * f, Scale(RadiusLogical), false, true, true, false)
-         .Concave(0, 0, f, f, 0)            // raccord au flanc de la barre, en haut
-         .Concave(0, h - f, f, f, h);       // et en bas
+        int edge = _x == 0 ? 0 : Math.Clamp(_x - Left, 0, Math.Max(0, w - f));
+        s.Body(edge, f, w - edge, h - 2 * f, Scale(RadiusLogical), false, true, true, false)
+         .Concave(edge, 0, f, f, 0)            // raccord au flanc de la barre, en haut
+         .Concave(edge, h - f, f, f, h);       // et en bas
     }
 
     /// <summary>Place le popout contre la barre (<paramref name="x"/> = flanc droit), centré sur <paramref name="centerY"/>.</summary>

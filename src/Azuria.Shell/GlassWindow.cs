@@ -143,6 +143,9 @@ internal class GlassWindow : Form
     protected virtual void BuildShape(GlassShape s, int w, int h) =>
         s.Body(0, 0, w, h, Scale(ShellMetrics.Fillet), true, true, true, true);
 
+    /// <summary>Vrai si la forme dépend de la position de la fenêtre (recalculée à chaque déplacement).</summary>
+    protected virtual bool ShapeFollowsPosition => false;
+
     /// <summary>Marges (px logiques) entre la fenêtre et la zone utile de la page : les congés.</summary>
     protected virtual Padding ContentInsets => Padding.Empty;
 
@@ -212,6 +215,7 @@ internal class GlassWindow : Form
     private void Track()
     {
         if (!IsHandleCreated) return;
+        if (ShapeFollowsPosition) ShapeVersion++; // la surface redessine le verre à la nouvelle forme
         var work = WorkArea;
         ShapeRegion.Apply(Handle, Shape,
             new Rectangle(work.X - Left, work.Y - Top, work.Width, work.Height));
