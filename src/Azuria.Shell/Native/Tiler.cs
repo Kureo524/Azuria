@@ -480,6 +480,13 @@ internal sealed class Tiler : IDisposable
     // ----- le focus suit le curseur -----
 
     private const int VK_LBUTTON = 0x01, VK_RBUTTON = 0x02, VK_MBUTTON = 0x04;
+    private const uint INPUT_MOUSE = 0;
+
+    // INPUT d'une souris, tout à zéro : seul le type compte. 40 octets sur 64 bits (type, puis l'union
+    // alignée sur 8, dont MOUSEINPUT est le plus grand membre).
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
+    private struct INPUT { [FieldOffset(0)] public uint type; }
+    [DllImport("user32.dll")] private static extern uint SendInput(uint count, ref INPUT input, int size);
     private const uint GA_ROOT = 2;
 
     // Ce qui peut céder le focus au survol : une appli, ou le bureau. Pas un menu, l'Alt-Tab, le
@@ -520,8 +527,15 @@ internal sealed class Tiler : IDisposable
         if (fg != 0 && !OpenWindows.IsAppWindow(fg) && !DesktopClasses.Contains(ClassOf(fg))) return;
         if (fg != 0 && IsGame(fg)) return;
 
+        if (SetForegroundWindow(under) && GetForegroundWindow() == under) return;
+        // Windows refuse le premier plan à un processus qui n'a pas reçu la dernière entrée de
+        // l'utilisateur (ici, c'est l'appli sous le curseur qui la reçoit). Une entrée de souris vide
+        // (aucun déplacement, aucun bouton), envoyée par nous, lève ce verrou : méthode de PowerToys.
+        // Jamais pendant un jeu (vérifié plus haut).
+        var none = new INPUT { type = INPUT_MOUSE };
+        SendInput(1, ref none, Marshal.SizeOf<INPUT>());
         if (!SetForegroundWindow(under) || GetForegroundWindow() != under)
-            SwitchToThisWindow(under, true); // Windows refuse parfois le premier plan à un processus en arrière-plan
+            SwitchToThisWindow(under, true);
     }
 
     private static string ClassOf(nint h)
