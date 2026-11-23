@@ -311,6 +311,7 @@ internal sealed class Tiler : IDisposable
                 // En plein écran : sa case lui reste, mais on ne la déplace pas (elle y revient seule).
                 if (IsFullScreen(h)) { _full.Add(h); continue; }
                 _full.Remove(h);
+                Round(h);
                 if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
                 // En pleine animation, la fenêtre est là où sa doublure la montre (la vraie attend peut-être hors de l'écran).
                 if ((_standIns.Shown(h) ?? Visible(h)) is not Rectangle f) continue;
@@ -394,6 +395,21 @@ internal sealed class Tiler : IDisposable
     }
 
     private readonly StandIns _standIns = new();
+
+    private const uint DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    private const int DWMWCP_DEFAULT = 0, DWMWCP_ROUND = 2;
+    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] private static extern int DwmGetWindowInt(nint h, uint attr, out int value, int size);
+    [DllImport("dwmapi.dll", EntryPoint = "DwmSetWindowAttribute")] private static extern int DwmSetWindowInt(nint h, uint attr, ref int value, int size);
+
+    // Coins ronds pour une fenêtre pavée qui laisse Windows choisir (Opera…) : sans demande explicite,
+    // Windows 11 les rend parfois carrés (après un plein écran, par exemple). Préférence de DWM, comme
+    // la couleur du contour : rien n'est injecté. Une appli qui a choisi ses coins garde son choix.
+    private static void Round(nint h)
+    {
+        if (DwmGetWindowInt(h, DWMWA_WINDOW_CORNER_PREFERENCE, out int pref, sizeof(int)) != 0 || pref != DWMWCP_DEFAULT) return;
+        int round = DWMWCP_ROUND;
+        DwmSetWindowInt(h, DWMWA_WINDOW_CORNER_PREFERENCE, ref round, sizeof(int));
+    }
 
     // Rectangle visible de la fenêtre (sans la bordure invisible de Windows 11).
     private static Rectangle? Visible(nint h)
