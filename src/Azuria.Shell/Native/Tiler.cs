@@ -240,6 +240,8 @@ internal sealed class Tiler : IDisposable
         _tiles.Remove(h);
         _floor.Remove(h);
         _fresh.Remove(h);
+        _parked.Remove(h);
+        _standIns.Release(h);
     }
 
     // Fenêtres pavées sur un écran (même règle que le placement).
@@ -280,7 +282,7 @@ internal sealed class Tiler : IDisposable
             // retient, et le partage de l'écran en tient compte (la voisine cède la place).
             if (_fitting)
                 foreach (var h in windows)
-                    if (_tiles.TryGetValue(h, out var given) && Visible(h) is Rectangle seen
+                    if (!_standIns.Holds(h) && _tiles.TryGetValue(h, out var given) && Visible(h) is Rectangle seen
                         && (seen.Width > given.Width || seen.Height > given.Height))
                         _floor[h] = new Size(Math.Max(seen.Width, _floor.GetValueOrDefault(h).Width),
                                              Math.Max(seen.Height, _floor.GetValueOrDefault(h).Height));
@@ -290,13 +292,23 @@ internal sealed class Tiler : IDisposable
                 var h = windows[k];
                 if (IsZoomed(h)) ShowWindow(h, SW_RESTORE);
                 _tiles[h] = rects[k];
-                if (Visible(h) is not Rectangle f) continue;
+                // En pleine animation, la fenêtre est là où sa doublure la montre (la vraie attend peut-être hors de l'écran).
+                if ((_standIns.Shown(h) ?? Visible(h)) is not Rectangle f) continue;
                 // Filet : deux minimums qui ne tiennent pas ensemble. L'appli garde sa taille, ramenée dans l'écran.
                 var to = _floor.TryGetValue(h, out var min) ? Fit(rects[k], min, area) : rects[k];
-                if (f != to) moves.Add((h, f, to));
+                if (f != to || _standIns.Holds(h)) moves.Add((h, f, to));
             }
         }
+        // Doublure d'une fenêtre qui n'est plus pavée (réduite, agrandie à la main…) : la vraie revient.
+        foreach (var h in _parked.Concat(_order).Where(_standIns.Holds).Distinct().ToList())
+            if (!moves.Any(m => m.H == h)) Unpark(h);
         if (moves.Count > 0) Animate(moves);
+    }
+
+    private void Unpark(nint h)
+    {
+        if (_parked.Remove(h) && IsWindow(h) && !IsIconic(h) && _tiles.TryGetValue(h, out var t)) Place(h, t);
+        _standIns.Release(h);
     }
 
     // L'appli refuse d'être plus petite que <paramref name="min"/> : elle garde cette taille, décalée
@@ -313,23 +325,80 @@ internal sealed class Tiler : IDisposable
     /// <summary>
     /// Les fenêtres glissent vers leur nouvelle place (DA §11 : 0,22 s, décélération), toutes en même
     /// temps, cadencées par DWM. Un nouveau pavage en cours de route reprend depuis la position atteinte.
+    ///
+    /// Ce sont leurs doublures qui bougent (<see cref="StandIns"/>) : une miniature DWM, étirée par le
+    /// compositeur, donc fluide quelle que soit l'appli. La vraie fenêtre ne change de taille qu'une
+    /// fois, à la fin. Si elle grandit, sa doublure la recouvre tout du long ; sinon elle attend hors
+    /// de l'écran (même taille, simple déplacement : rien à redessiner). Doublure refusée par DWM :
+    /// la fenêtre s'anime elle-même, comme avant.
     /// </summary>
     private async void Animate(List<(nint H, Rectangle From, Rectangle To)> moves)
     {
         int gen = ++_generation;
+        var doubled = new HashSet<nint>();
+        foreach (var (h, f, t) in moves)
+        {
+            var screen = Screen.AllScreens.FirstOrDefault(s => _screenOf.TryGetValue(h, out var n) && s.DeviceName == n)
+                         ?? Screen.FromHandle(h);
+            if (!_standIns.Hold(h, screen, f)) { _standIns.Release(h); continue; }
+            // Elle grandit : sa doublure la recouvre tout du long. Sinon, elle se met de côté.
+            if (!t.Contains(f) && !Park(h, screen)) { _standIns.Release(h); continue; }
+            doubled.Add(h);
+        }
+
         const double dur = 220;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         while (sw.Elapsed.TotalMilliseconds < dur)
         {
             double e = Easing.In(sw.Elapsed.TotalMilliseconds / dur);
             foreach (var (h, f, t) in moves)
-                Place(h, Rectangle.FromLTRB(Easing.Lerp(f.Left, t.Left, e), Easing.Lerp(f.Top, t.Top, e),
-                                            Easing.Lerp(f.Right, t.Right, e), Easing.Lerp(f.Bottom, t.Bottom, e)));
+            {
+                var r = Rectangle.FromLTRB(Easing.Lerp(f.Left, t.Left, e), Easing.Lerp(f.Top, t.Top, e),
+                                           Easing.Lerp(f.Right, t.Right, e), Easing.Lerp(f.Bottom, t.Bottom, e));
+                if (doubled.Contains(h)) _standIns.Show(h, r);
+                else Place(h, r);
+            }
             await Task.Run(Dwm.Flush);
-            if (gen != _generation || _disposed) return; // remplacé par un pavage plus récent
+            if (gen != _generation || _disposed) return; // remplacé par un pavage plus récent (il reprend les doublures)
         }
-        foreach (var (h, _, t) in moves) Place(h, t);
+        foreach (var (h, _, t) in moves)
+        {
+            if (doubled.Contains(h)) _standIns.Show(h, t);
+            Place(h, t);
+            _parked.Remove(h);
+        }
+        // La vraie fenêtre est à sa place : on lui laisse quelques images pour se redessiner à sa
+        // nouvelle taille, sous sa doublure, avant de la montrer.
+        for (int i = 0; i < 4 && doubled.Count > 0; i++)
+        {
+            await Task.Run(Dwm.Flush);
+            if (gen != _generation || _disposed) return;
+        }
+        foreach (var h in doubled) _standIns.Release(h);
         if (!_fitting && !_disposed) { _fit.Stop(); _fit.Start(); } // chacune a-t-elle accepté sa place ?
+    }
+
+    // Fenêtres mises de côté hors de l'écran pendant que leur doublure s'anime.
+    private readonly HashSet<nint> _parked = new();
+    private readonly StandIns _standIns = new();
+
+    // Met la fenêtre de côté sous son écran, à la même taille (un déplacement : l'appli n'a rien à
+    // redessiner). Sous son propre écran, pour que Windows ne lui attribue pas l'échelle d'un autre.
+    // Faux s'il n'y a pas de place sûre (un écran au-dessus et au-dessous).
+    private bool Park(nint h, Screen screen)
+    {
+        if (_parked.Contains(h)) return true;
+        if (Visible(h) is not Rectangle f) return false;
+        var b = screen.Bounds;
+        int x = Math.Clamp(f.X, b.Left, Math.Max(b.Left, b.Right - f.Width));
+        var below = new Rectangle(x, b.Bottom + 200, f.Width, f.Height);
+        var above = new Rectangle(x, b.Top - 200 - f.Height, f.Width, f.Height);
+        bool Free(Rectangle r) => !Screen.AllScreens.Any(s => s.Bounds.IntersectsWith(Rectangle.Inflate(r, 0, 200)));
+        var away = Free(below) ? below : Free(above) ? above : (Rectangle?)null;
+        if (away is not Rectangle a) return false;
+        Place(h, a);
+        _parked.Add(h);
+        return true;
     }
 
     // Rectangle visible de la fenêtre (sans la bordure invisible de Windows 11).
@@ -542,6 +611,8 @@ internal sealed class Tiler : IDisposable
     public void Dispose()
     {
         _disposed = true;
+        foreach (var h in _parked.ToList()) Unpark(h); // aucune fenêtre ne reste hors de l'écran
+        _standIns.Dispose();
         Settings.Changed -= OnSettingsChanged;
         Focus(0);
         if (_snapWasOn) SystemParametersSet(SPI_SETWINARRANGING, 1, 0, SPIF_SENDCHANGE);
