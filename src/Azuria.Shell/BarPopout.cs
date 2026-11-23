@@ -38,12 +38,27 @@ internal sealed class PopoutWindow : GlassWindow
     /// <summary>Haut du corps (sous le congé du haut), en pixels écran.</summary>
     public int BodyTop => Top + Scale(ShellMetrics.Fillet);
 
+    // Pendant le glissé, la fenêtre passe en partie derrière la barre, où le verre est rogné (bord de
+    // la zone de travail). La forme suit donc ce bord : les congés restent collés au flanc de la barre
+    // et seul le corps se replie dessous, au lieu de congés rognés qui se décollent du popout.
+    protected override bool ShapeFollowsPosition => true;
+
     protected override void BuildShape(GlassShape s, int w, int h)
     {
         int f = Scale(ShellMetrics.Fillet);
-        s.Body(0, f, w, h - 2 * f, Scale(RadiusLogical), false, true, true, false)
-         .Concave(0, 0, f, f, 0)            // raccord au flanc de la barre, en haut
-         .Concave(0, h - f, f, f, h);       // et en bas
+        int edge = _x == 0 ? 0 : Math.Clamp(_x - Left, 0, Math.Max(0, w - f));
+        s.Body(edge, f, w - edge, h - 2 * f, Scale(RadiusLogical), false, true, true, false)
+         .Concave(edge, 0, f, f, 0)            // raccord au flanc de la barre, en haut
+         .Concave(edge, h - f, f, f, h);       // et en bas
+    }
+
+    /// <summary>La barre a bougé (elle glisse) : le popout reste collé à son flanc droit <paramref name="x"/>.</summary>
+    public void FollowBar(int x)
+    {
+        if (_x == 0 || x == _x) return;
+        int dx = x - _x;
+        _x = x;
+        ShiftBy(dx, 0);
     }
 
     /// <summary>Place le popout contre la barre (<paramref name="x"/> = flanc droit), centré sur <paramref name="centerY"/>.</summary>
@@ -106,6 +121,13 @@ internal sealed class BarPopout : IDisposable
         _apps.Changed += () => { if (_pop.Visible && _key.StartsWith("desk:")) SendContent(); };
         _bar.KeepAlso = p => _pop.Visible && Rectangle.Inflate(_pop.Bounds, 4, 4).Contains(p);
         _bar.MessageReceived += OnBarMessage;
+        // La barre se range dès que le curseur quitte le popout : le popout la suit à chaque image (au
+        // lieu de rester en l'air, décollé), et se range avec elle.
+        _bar.Moved += _ =>
+        {
+            _pop.FollowBar(_bar.Left + Monitors.Scale(_bar.AnchorScreen, _barBodyLogical));
+            if (!_bar.IsShown && _pop.IsShown) Hide();
+        };
         _pop.MessageReceived += OnPopMessage;
         _radios.Changed += () => { if (_pop.Visible && _key == "net") SendContent(); };
         _radios.Start();
